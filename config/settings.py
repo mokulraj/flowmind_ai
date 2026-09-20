@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "apps.preprocessing",
     "apps.analytics",
     "apps.bottleneck_detection",
+    "apps.anomaly_detection",
 ]
 
 

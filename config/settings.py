@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "apps.datasets",
     "apps.preprocessing",
     "apps.analytics",
+    "apps.bottleneck_detection",
 ]
 
 

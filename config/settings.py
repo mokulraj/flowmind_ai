@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     # FlowMind
     "apps.accounts",
     "apps.organizations",
+    "apps.workflows",
 ]
 
 

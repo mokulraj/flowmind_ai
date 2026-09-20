@@ -61,6 +61,22 @@ class Recommendation(models.Model):
         default=Status.NEW,
     )
 
+    score = models.FloatField(
+        default=0.0,
+    )
+
+    severity_score = models.FloatField(
+        default=0.0,
+    )
+
+    evidence_score = models.FloatField(
+        default=0.0,
+    )
+
+    impact_score = models.FloatField(
+        default=0.0,
+    )
+
     evidence = models.JSONField(
         default=dict,
         blank=True,
@@ -83,7 +99,7 @@ class Recommendation(models.Model):
     )
 
     class Meta:
-        ordering = ["-created_at"]
+        ordering = ["-score", "-created_at"]
 
         indexes = [
             models.Index(
@@ -97,6 +113,9 @@ class Recommendation(models.Model):
             ),
             models.Index(
                 fields=["organization", "recommendation_type"],
+            ),
+            models.Index(
+                fields=["organization", "score"],
             ),
         ]
 

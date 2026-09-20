@@ -127,6 +127,39 @@ class DurationPredictionModel:
 
         return result
 
+    def get_feature_importance(self):
+        """
+        Return the trained model's feature importance values.
+        """
+
+        if not self.is_trained:
+            raise PredictionError(
+                "The prediction model must be trained before "
+                "feature importance can be calculated."
+            )
+
+        importance = pd.DataFrame(
+            {
+                "feature": self.feature_columns,
+                "importance": (
+                    self.model.feature_importances_
+                ),
+            }
+        )
+
+        importance = importance.sort_values(
+            by="importance",
+            ascending=False,
+        )
+
+        importance["importance"] = importance[
+            "importance"
+        ].round(4)
+
+        return importance.reset_index(
+            drop=True
+        )
+
     def _validate_training_dataframe(
         self,
         dataframe,

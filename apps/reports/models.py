@@ -41,6 +41,14 @@ class Report(models.Model):
         blank=True,
     )
 
+    dataset = models.ForeignKey(
+        "datasets.Dataset",
+        on_delete=models.SET_NULL,
+        related_name="reports",
+        null=True,
+        blank=True,
+    )
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -115,6 +123,10 @@ class Report(models.Model):
             models.Index(
                 fields=["organization", "workflow"],
                 name="report_org_workflow_idx",
+            ),
+            models.Index(
+                fields=["organization", "dataset"],
+                name="report_org_dataset_idx",
             ),
         ]
 

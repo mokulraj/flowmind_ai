@@ -9,6 +9,7 @@ class ReportAdmin(admin.ModelAdmin):
         "title",
         "organization",
         "workflow",
+        "dataset",
         "report_type",
         "status",
         "output_format",
@@ -28,6 +29,7 @@ class ReportAdmin(admin.ModelAdmin):
         "description",
         "organization__name",
         "workflow__name",
+        "dataset__name",
         "created_by__username",
         "created_by__email",
     )

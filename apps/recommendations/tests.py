@@ -743,3 +743,257 @@ class RecommendationScoringServiceTests(TestCase):
     def test_score_many_requires_input(self):
         with self.assertRaises(RecommendationScoringError):
             self.service.score_many(None)
+            
+            
+            
+from apps.recommendations.services.ai_explanation import (
+    RecommendationAIExplanationError,
+    RecommendationAIExplanationService,
+)
+
+
+class MockRecommendationAnalysisService:
+    def __init__(self, response):
+        self.response = response
+        self.calls = []
+
+    def analyze(self, **kwargs):
+        self.calls.append(kwargs)
+
+        return {
+            "response": self.response,
+            "context": {},
+            "retrieved_knowledge": [],
+            "prompt": "mock prompt",
+            "prompt_type": "workflow_analysis",
+        }
+
+
+class RecommendationAIExplanationServiceTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="ai_explanation_user",
+            email="ai_explanation@example.com",
+            password="test-password-123",
+        )
+
+        self.organization = Organization.objects.create(
+            name="AI Explanation Organization",
+            slug="ai-explanation-organization",
+        )
+
+        OrganizationMember.objects.create(
+            organization=self.organization,
+            user=self.user,
+            role=OrganizationMember.Role.ADMIN,
+        )
+
+        self.workflow = Workflow.objects.create(
+            organization=self.organization,
+            name="AI Explanation Workflow",
+            created_by=self.user,
+        )
+
+        self.recommendation = Recommendation.objects.create(
+            organization=self.organization,
+            workflow=self.workflow,
+            title="Reduce verification delay",
+            description=(
+                "Verification is taking longer than expected."
+            ),
+            recommendation_type=(
+                Recommendation.RecommendationType.BOTTLENECK
+            ),
+            priority=Recommendation.Priority.HIGH,
+            score=82.0,
+            severity_score=90.0,
+            evidence_score=80.0,
+            impact_score=70.0,
+            evidence={
+                "step_name": "Verification",
+                "average_duration": 12.1,
+                "expected_duration": 5.0,
+                "delay_ratio": 2.42,
+            },
+            expected_impact=(
+                "Reducing verification delay may improve "
+                "overall workflow throughput."
+            ),
+        )
+
+    def test_build_context_contains_recommendation_data(self):
+        service = RecommendationAIExplanationService()
+
+        context = service._build_context(
+            self.recommendation
+        )
+
+        self.assertEqual(
+            context["recommendation"]["title"],
+            "Reduce verification delay",
+        )
+
+        self.assertEqual(
+            context["recommendation"]["score"],
+            82.0,
+        )
+
+        self.assertEqual(
+            context["recommendation"]["evidence"][
+                "step_name"
+            ],
+            "Verification",
+        )
+
+        self.assertEqual(
+            context["workflow"]["name"],
+            "AI Explanation Workflow",
+        )
+
+    def test_build_prompt_contains_evidence(self):
+        service = RecommendationAIExplanationService()
+
+        context = service._build_context(
+            self.recommendation
+        )
+
+        prompt = service._build_prompt(
+            context
+        )
+
+        self.assertIn(
+            "Reduce verification delay",
+            prompt,
+        )
+
+        self.assertIn(
+            "Verification",
+            prompt,
+        )
+
+        self.assertIn(
+            "12.1",
+            prompt,
+        )
+
+        self.assertIn(
+            "5.0",
+            prompt,
+        )
+
+        self.assertIn(
+            "2.42",
+            prompt,
+        )
+
+    def test_explain_saves_ai_explanation(self):
+        mock_analysis = MockRecommendationAnalysisService(
+            response=(
+                "Verification is significantly slower than "
+                "the expected duration based on the supplied "
+                "evidence."
+            )
+        )
+
+        service = RecommendationAIExplanationService(
+            analysis_service=mock_analysis
+        )
+
+        result = service.explain(
+            recommendation=self.recommendation
+        )
+
+        self.assertEqual(
+            result["response"],
+            (
+                "Verification is significantly slower than "
+                "the expected duration based on the supplied "
+                "evidence."
+            ),
+        )
+
+        refreshed = Recommendation.objects.get(
+            pk=self.recommendation.pk
+        )
+
+        self.assertEqual(
+            refreshed.ai_explanation,
+            result["response"],
+        )
+
+    def test_explain_passes_organization_to_ai_service(self):
+        mock_analysis = MockRecommendationAnalysisService(
+            response="Explanation"
+        )
+
+        service = RecommendationAIExplanationService(
+            analysis_service=mock_analysis
+        )
+
+        service.explain(
+            recommendation=self.recommendation
+        )
+
+        self.assertEqual(
+            len(mock_analysis.calls),
+            1,
+        )
+
+        self.assertEqual(
+            mock_analysis.calls[0]["organization"],
+            self.organization,
+        )
+
+        self.assertEqual(
+            mock_analysis.calls[0]["workflow"],
+            self.workflow,
+        )
+
+    def test_custom_system_prompt_is_forwarded(self):
+        mock_analysis = MockRecommendationAnalysisService(
+            response="Explanation"
+        )
+
+        service = RecommendationAIExplanationService(
+            analysis_service=mock_analysis
+        )
+
+        custom_prompt = (
+            "Explain recommendations in a concise business style."
+        )
+
+        service.explain(
+            recommendation=self.recommendation,
+            system_prompt=custom_prompt,
+        )
+
+        self.assertEqual(
+            mock_analysis.calls[0]["system_prompt"],
+            custom_prompt,
+        )
+
+    def test_invalid_recommendation_is_rejected(self):
+        service = RecommendationAIExplanationService()
+
+        with self.assertRaises(
+            RecommendationAIExplanationError
+        ):
+            service.explain(
+                recommendation=None
+            )
+
+    def test_empty_ai_response_is_rejected(self):
+        mock_analysis = MockRecommendationAnalysisService(
+            response="   "
+        )
+
+        service = RecommendationAIExplanationService(
+            analysis_service=mock_analysis
+        )
+
+        with self.assertRaises(
+            RecommendationAIExplanationError
+        ):
+            service.explain(
+                recommendation=self.recommendation
+            )

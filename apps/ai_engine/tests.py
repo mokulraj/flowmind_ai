@@ -20,10 +20,17 @@ from apps.ai_engine.services.knowledge_embeddings import (
     KnowledgeEmbeddingError,
     KnowledgeEmbeddingService,
 )
+from apps.ai_engine.services.prompts import (
+    AIPromptBuilder,
+)
 from apps.ai_engine.services.llm import (
     LLMError,
     LLMService,
     MockLLMProvider,
+)
+from apps.ai_engine.services.vector_search import (
+    KnowledgeVectorSearchService,
+    VectorSearchError,
 )
 from apps.organizations.models import Organization
 
@@ -32,9 +39,14 @@ class MockLLMTests(TestCase):
     def test_mock_provider_returns_response(self):
         provider = MockLLMProvider()
 
-        response = provider.generate("Analyze this workflow.")
+        response = provider.generate(
+            "Analyze this workflow."
+        )
 
-        self.assertIn("Mock AI response", response)
+        self.assertIn(
+            "Mock AI response",
+            response,
+        )
 
     def test_empty_prompt_raises_error(self):
         provider = MockLLMProvider()
@@ -45,9 +57,14 @@ class MockLLMTests(TestCase):
     def test_llm_service_uses_default_provider(self):
         service = LLMService()
 
-        response = service.generate("Test prompt.")
+        response = service.generate(
+            "Test prompt."
+        )
 
-        self.assertIn("Mock AI response", response)
+        self.assertIn(
+            "Mock AI response",
+            response,
+        )
 
     def test_custom_provider_is_used(self):
         class CustomProvider(MockLLMProvider):
@@ -60,10 +77,14 @@ class MockLLMTests(TestCase):
             ):
                 return "Custom response"
 
-        service = LLMService(provider=CustomProvider())
+        service = LLMService(
+            provider=CustomProvider()
+        )
 
         self.assertEqual(
-            service.generate("Test prompt."),
+            service.generate(
+                "Test prompt."
+            ),
             "Custom response",
         )
 
@@ -92,7 +113,10 @@ class MockLLMTests(TestCase):
                 return "OK"
 
         provider = ParameterProvider()
-        service = LLMService(provider=provider)
+
+        service = LLMService(
+            provider=provider
+        )
 
         response = service.generate(
             prompt="Analyze",
@@ -101,19 +125,26 @@ class MockLLMTests(TestCase):
             max_tokens=250,
         )
 
-        self.assertEqual(response, "OK")
+        self.assertEqual(
+            response,
+            "OK",
+        )
+
         self.assertEqual(
             provider.received["prompt"],
             "Analyze",
         )
+
         self.assertEqual(
             provider.received["system_prompt"],
             "System",
         )
+
         self.assertEqual(
             provider.received["temperature"],
             0.5,
         )
+
         self.assertEqual(
             provider.received["max_tokens"],
             250,
@@ -149,7 +180,9 @@ class AIContextBuilderTests(TestCase):
 
         builder = AIContextBuilder()
 
-        context = builder.build(workflow=Workflow())
+        context = builder.build(
+            workflow=Workflow()
+        )
 
         self.assertEqual(
             context["workflow"]["name"],
@@ -171,11 +204,13 @@ class AIContextBuilderTests(TestCase):
         builder = AIContextBuilder()
 
         context = builder.build(
-            duration_analytics=dataframe,
+            duration_analytics=dataframe
         )
 
         self.assertEqual(
-            context["duration_analytics"][0]["step_name"],
+            context["duration_analytics"][0][
+                "step_name"
+            ],
             "Verification",
         )
 
@@ -188,7 +223,7 @@ class AIContextBuilderTests(TestCase):
         }
 
         context = builder.build(
-            predictions=data,
+            predictions=data
         )
 
         self.assertEqual(
@@ -205,7 +240,7 @@ class AIContextBuilderTests(TestCase):
         ]
 
         context = builder.build(
-            anomalies=data,
+            anomalies=data
         )
 
         self.assertEqual(
@@ -239,7 +274,7 @@ class AIContextBuilderTests(TestCase):
         builder = AIContextBuilder()
 
         context = builder.build(
-            explainability=None,
+            explainability=None
         )
 
         self.assertNotIn(
@@ -294,7 +329,9 @@ class AIAnalysisServiceTests(TestCase):
             predictions={
                 "delay_probability": 0.78,
             },
-            system_prompt="Custom system instructions.",
+            system_prompt=(
+                "Custom system instructions."
+            ),
         )
 
         self.assertIn(
@@ -342,7 +379,7 @@ class AIAnalysisServiceTests(TestCase):
         }
 
         result = service.analyze(
-            predictions=predictions,
+            predictions=predictions
         )
 
         self.assertEqual(
@@ -363,7 +400,9 @@ class KnowledgeChunkingServiceTests(TestCase):
         self.document = KnowledgeDocument.objects.create(
             organization=self.organization,
             title="Order Fulfillment Knowledge",
-            source_type=KnowledgeDocument.SourceType.MANUAL,
+            source_type=(
+                KnowledgeDocument.SourceType.MANUAL
+            ),
             source_reference="test-manual",
             content=(
                 "Order Fulfillment is the process of receiving, "
@@ -465,35 +504,29 @@ class KnowledgeChunkingServiceTests(TestCase):
             self.document
         )
 
-        first_count = first_result[
-            "chunk_count"
-        ]
-
         second_result = service.chunk_document(
             self.document
         )
 
-        second_count = second_result[
-            "chunk_count"
-        ]
-
         self.assertEqual(
-            first_count,
-            second_count,
+            first_result["chunk_count"],
+            second_result["chunk_count"],
         )
 
         self.assertEqual(
             KnowledgeChunk.objects.filter(
                 document=self.document
             ).count(),
-            second_count,
+            second_result["chunk_count"],
         )
 
     def test_empty_document_raises_error(self):
         document = KnowledgeDocument.objects.create(
             organization=self.organization,
             title="Empty Document",
-            source_type=KnowledgeDocument.SourceType.MANUAL,
+            source_type=(
+                KnowledgeDocument.SourceType.MANUAL
+            ),
             content="",
         )
 
@@ -505,7 +538,7 @@ class KnowledgeChunkingServiceTests(TestCase):
     def test_invalid_chunk_size_raises_error(self):
         with self.assertRaises(ChunkingError):
             KnowledgeChunkingService(
-                chunk_size=0,
+                chunk_size=0
             )
 
     def test_invalid_overlap_raises_error(self):
@@ -527,7 +560,9 @@ class KnowledgeChunkingServiceTests(TestCase):
         document = KnowledgeDocument.objects.create(
             organization=self.organization,
             title="Small Document",
-            source_type=KnowledgeDocument.SourceType.MANUAL,
+            source_type=(
+                KnowledgeDocument.SourceType.MANUAL
+            ),
             content="Short workflow description.",
         )
 
@@ -554,7 +589,7 @@ class KnowledgeChunkingServiceTests(TestCase):
 class EmbeddingServiceTests(TestCase):
     def test_mock_provider_returns_vector(self):
         provider = MockEmbeddingProvider(
-            dimensions=16,
+            dimensions=16
         )
 
         vector = provider.embed(
@@ -651,7 +686,7 @@ class EmbeddingServiceTests(TestCase):
     def test_invalid_dimensions_raise_error(self):
         with self.assertRaises(EmbeddingError):
             MockEmbeddingProvider(
-                dimensions=0,
+                dimensions=0
             )
 
     def test_embedding_service_uses_default_provider(self):
@@ -675,9 +710,7 @@ class EmbeddingServiceTests(TestCase):
             provider=CustomProvider()
         )
 
-        vector = service.embed(
-            "Test"
-        )
+        vector = service.embed("Test")
 
         self.assertEqual(
             vector,
@@ -716,7 +749,9 @@ class EmbeddingServiceTests(TestCase):
         service = EmbeddingService()
 
         with self.assertRaises(EmbeddingError):
-            service.embed_many("not a list")
+            service.embed_many(
+                "not a list"
+            )
 
     def test_embed_many_rejects_empty_text(self):
         service = EmbeddingService()
@@ -742,7 +777,9 @@ class KnowledgeEmbeddingServiceTests(TestCase):
         self.document = KnowledgeDocument.objects.create(
             organization=self.organization,
             title="Order Fulfillment Knowledge",
-            source_type=KnowledgeDocument.SourceType.MANUAL,
+            source_type=(
+                KnowledgeDocument.SourceType.MANUAL
+            ),
             source_reference="embedding-test",
             content=(
                 "Order fulfillment receives, verifies, "
@@ -810,9 +847,13 @@ class KnowledgeEmbeddingServiceTests(TestCase):
             2,
         )
 
-        chunks = KnowledgeChunk.objects.filter(
-            document=self.document
-        ).order_by("chunk_index")
+        chunks = (
+            KnowledgeChunk.objects
+            .filter(
+                document=self.document
+            )
+            .order_by("chunk_index")
+        )
 
         for chunk in chunks:
             self.assertIsNotNone(
@@ -899,7 +940,9 @@ class KnowledgeEmbeddingServiceTests(TestCase):
         empty_document = KnowledgeDocument.objects.create(
             organization=self.organization,
             title="No Chunks Document",
-            source_type=KnowledgeDocument.SourceType.MANUAL,
+            source_type=(
+                KnowledgeDocument.SourceType.MANUAL
+            ),
             content="Document without chunks.",
         )
 
@@ -927,3 +970,892 @@ class KnowledgeEmbeddingServiceTests(TestCase):
             KnowledgeEmbeddingError
         ):
             service.embed_chunks(None)
+
+
+class KnowledgeVectorSearchServiceTests(TestCase):
+    def setUp(self):
+        self.organization = Organization.objects.create(
+            name="Vector Search Organization",
+            slug="vector-search-organization",
+            industry="Technology",
+            description="Organization used for vector search tests.",
+        )
+
+        self.other_organization = Organization.objects.create(
+            name="Other Organization",
+            slug="other-vector-search-organization",
+            industry="Technology",
+            description="Organization for tenant isolation tests.",
+        )
+
+        self.document = KnowledgeDocument.objects.create(
+            organization=self.organization,
+            title="Order Fulfillment Knowledge",
+            source_type=(
+                KnowledgeDocument.SourceType.MANUAL
+            ),
+            content="Order fulfillment process.",
+        )
+
+        self.other_document = KnowledgeDocument.objects.create(
+            organization=self.other_organization,
+            title="Other Organization Knowledge",
+            source_type=(
+                KnowledgeDocument.SourceType.MANUAL
+            ),
+            content="Other organization process.",
+        )
+
+        self.chunk_one = KnowledgeChunk.objects.create(
+            document=self.document,
+            chunk_index=0,
+            content="Order verification process.",
+            token_count=3,
+        )
+
+        self.chunk_two = KnowledgeChunk.objects.create(
+            document=self.document,
+            chunk_index=1,
+            content="Packing and shipping process.",
+            token_count=4,
+        )
+
+        self.other_chunk = KnowledgeChunk.objects.create(
+            document=self.other_document,
+            chunk_index=0,
+            content="Other organization information.",
+            token_count=3,
+        )
+
+        embedding_service = EmbeddingService()
+
+        KnowledgeEmbeddingService(
+            embedding_service=embedding_service
+        ).embed_chunks(
+            [
+                self.chunk_one,
+                self.chunk_two,
+                self.other_chunk,
+            ]
+        )
+
+    def test_search_returns_results(self):
+        service = KnowledgeVectorSearchService()
+
+        results = service.search(
+            query="Order verification",
+            organization=self.organization,
+        )
+
+        self.assertGreater(
+            len(results),
+            0,
+        )
+
+    def test_search_results_have_required_fields(self):
+        service = KnowledgeVectorSearchService()
+
+        results = service.search(
+            query="Order verification",
+            organization=self.organization,
+        )
+
+        result = results[0]
+
+        self.assertIn(
+            "chunk",
+            result,
+        )
+
+        self.assertIn(
+            "document",
+            result,
+        )
+
+        self.assertIn(
+            "similarity",
+            result,
+        )
+
+    def test_results_are_sorted_by_similarity(self):
+        service = KnowledgeVectorSearchService()
+
+        results = service.search(
+            query="Order verification",
+            organization=self.organization,
+            top_k=5,
+        )
+
+        similarities = [
+            result["similarity"]
+            for result in results
+        ]
+
+        self.assertEqual(
+            similarities,
+            sorted(
+                similarities,
+                reverse=True,
+            ),
+        )
+
+    def test_top_k_limits_results(self):
+        service = KnowledgeVectorSearchService()
+
+        results = service.search(
+            query="workflow",
+            organization=self.organization,
+            top_k=1,
+        )
+
+        self.assertLessEqual(
+            len(results),
+            1,
+        )
+
+    def test_search_is_tenant_isolated(self):
+        service = KnowledgeVectorSearchService()
+
+        results = service.search(
+            query="Other organization information",
+            organization=self.organization,
+            top_k=10,
+        )
+
+        returned_chunks = [
+            result["chunk"]
+            for result in results
+        ]
+
+        self.assertNotIn(
+            self.other_chunk,
+            returned_chunks,
+        )
+
+    def test_search_excludes_chunks_without_embeddings(self):
+        chunk_without_embedding = KnowledgeChunk.objects.create(
+            document=self.document,
+            chunk_index=2,
+            content="Chunk without an embedding.",
+            token_count=4,
+        )
+
+        service = KnowledgeVectorSearchService()
+
+        results = service.search(
+            query="Chunk without embedding",
+            organization=self.organization,
+            top_k=10,
+        )
+
+        returned_chunks = [
+            result["chunk"]
+            for result in results
+        ]
+
+        self.assertNotIn(
+            chunk_without_embedding,
+            returned_chunks,
+        )
+
+    def test_empty_query_raises_error(self):
+        service = KnowledgeVectorSearchService()
+
+        with self.assertRaises(
+            VectorSearchError
+        ):
+            service.search(
+                query="",
+                organization=self.organization,
+            )
+
+    def test_none_query_raises_error(self):
+        service = KnowledgeVectorSearchService()
+
+        with self.assertRaises(
+            VectorSearchError
+        ):
+            service.search(
+                query=None,
+                organization=self.organization,
+            )
+
+    def test_none_organization_raises_error(self):
+        service = KnowledgeVectorSearchService()
+
+        with self.assertRaises(
+            VectorSearchError
+        ):
+            service.search(
+                query="verification",
+                organization=None,
+            )
+
+    def test_invalid_top_k_raises_error(self):
+        service = KnowledgeVectorSearchService()
+
+        with self.assertRaises(
+            VectorSearchError
+        ):
+            service.search(
+                query="verification",
+                organization=self.organization,
+                top_k=0,
+            )
+
+    def test_cosine_similarity_identical_vectors(self):
+        similarity = (
+            KnowledgeVectorSearchService
+            ._cosine_similarity(
+                [1.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+            )
+        )
+
+        self.assertAlmostEqual(
+            similarity,
+            1.0,
+            places=6,
+        )
+
+    def test_cosine_similarity_orthogonal_vectors(self):
+        similarity = (
+            KnowledgeVectorSearchService
+            ._cosine_similarity(
+                [1.0, 0.0],
+                [0.0, 1.0],
+            )
+        )
+
+        self.assertAlmostEqual(
+            similarity,
+            0.0,
+            places=6,
+        )
+
+    def test_cosine_similarity_rejects_different_dimensions(self):
+        with self.assertRaises(
+            VectorSearchError
+        ):
+            KnowledgeVectorSearchService._cosine_similarity(
+                [1.0, 0.0],
+                [1.0, 0.0, 0.0],
+            )
+
+    def test_cosine_similarity_rejects_zero_vector(self):
+        with self.assertRaises(
+            VectorSearchError
+        ):
+            KnowledgeVectorSearchService._cosine_similarity(
+                [0.0, 0.0],
+                [1.0, 0.0],
+            )
+
+
+class RAGAnalysisIntegrationTests(TestCase):
+    def setUp(self):
+        self.organization = Organization.objects.create(
+            name="RAG Integration Organization",
+            slug="rag-integration-organization",
+            industry="Technology",
+            description="Organization used for RAG integration tests.",
+        )
+
+        self.document = KnowledgeDocument.objects.create(
+            organization=self.organization,
+            title="Verification Knowledge",
+            source_type=(
+                KnowledgeDocument.SourceType.MANUAL
+            ),
+            content=(
+                "Verification checks payment information "
+                "before an order proceeds to packing."
+            ),
+        )
+
+        self.chunk = KnowledgeChunk.objects.create(
+            document=self.document,
+            chunk_index=0,
+            content=(
+                "Verification checks payment information "
+                "before an order proceeds to packing."
+            ),
+            token_count=10,
+        )
+
+        KnowledgeEmbeddingService().embed_chunk(
+            self.chunk
+        )
+
+    def test_analysis_can_use_rag(self):
+        service = AIAnalysisService()
+
+        result = service.analyze(
+            predictions={
+                "delay_probability": 0.78,
+            },
+            query="How does verification work?",
+            organization=self.organization,
+        )
+
+        self.assertIn(
+            "retrieved_knowledge",
+            result,
+        )
+
+        self.assertGreater(
+            len(result["retrieved_knowledge"]),
+            0,
+        )
+
+    def test_rag_context_is_in_prompt(self):
+        service = AIAnalysisService()
+
+        result = service.analyze(
+            predictions={
+                "delay_probability": 0.78,
+            },
+            query="How does verification work?",
+            organization=self.organization,
+        )
+
+        self.assertIn(
+            "RETRIEVED KNOWLEDGE",
+            result["prompt"],
+        )
+
+        self.assertIn(
+            "Verification checks payment information",
+            result["prompt"],
+        )
+
+    def test_rag_context_is_returned(self):
+        service = AIAnalysisService()
+
+        result = service.analyze(
+            query="How does verification work?",
+            organization=self.organization,
+        )
+
+        self.assertIn(
+            "retrieved_knowledge",
+            result["context"],
+        )
+
+        retrieved = result["context"][
+            "retrieved_knowledge"
+        ]
+
+        self.assertGreater(
+            len(retrieved),
+            0,
+        )
+
+        self.assertEqual(
+            retrieved[0]["document_title"],
+            "Verification Knowledge",
+        )
+
+    def test_query_requires_organization(self):
+        service = AIAnalysisService()
+
+        with self.assertRaises(
+            Exception
+        ):
+            service.analyze(
+                predictions={
+                    "delay_probability": 0.78,
+                },
+                query="verification",
+            )
+
+    def test_analysis_without_query_still_works(self):
+        service = AIAnalysisService()
+
+        result = service.analyze(
+            predictions={
+                "delay_probability": 0.78,
+            }
+        )
+
+        self.assertIn(
+            "response",
+            result,
+        )
+
+        self.assertIsNone(
+            result["retrieved_knowledge"]
+        )
+        
+        
+class AIWorkflowAssistantTests(TestCase):
+    def setUp(self):
+        from apps.ai_engine.services.assistant import (
+            AIWorkflowAssistant,
+            AIWorkflowAssistantError,
+        )
+
+        self.AIWorkflowAssistant = AIWorkflowAssistant
+        self.AIWorkflowAssistantError = (
+            AIWorkflowAssistantError
+        )
+
+        self.organization = Organization.objects.create(
+            name="Assistant Test Organization",
+            slug="assistant-test-organization",
+            industry="Technology",
+            description="Organization used for assistant tests.",
+        )
+
+        self.document = KnowledgeDocument.objects.create(
+            organization=self.organization,
+            title="Assistant Knowledge",
+            source_type=(
+                KnowledgeDocument.SourceType.MANUAL
+            ),
+            content=(
+                "Verification checks payment information "
+                "before an order proceeds to packing."
+            ),
+        )
+
+        self.chunk = KnowledgeChunk.objects.create(
+            document=self.document,
+            chunk_index=0,
+            content=(
+                "Verification checks payment information "
+                "before an order proceeds to packing."
+            ),
+            token_count=10,
+        )
+
+        KnowledgeEmbeddingService().embed_chunk(
+            self.chunk
+        )
+
+    def test_assistant_can_answer_analysis_question(self):
+        assistant = self.AIWorkflowAssistant()
+
+        result = assistant.ask(
+            query="How does verification work?",
+            organization=self.organization,
+            predictions={
+                "delay_probability": 0.78,
+            },
+        )
+
+        self.assertIn(
+            "response",
+            result,
+        )
+
+        self.assertIn(
+            "query",
+            result,
+        )
+
+        self.assertEqual(
+            result["query"],
+            "How does verification work?",
+        )
+
+    def test_assistant_uses_rag(self):
+        assistant = self.AIWorkflowAssistant()
+
+        result = assistant.ask(
+            query="How does verification work?",
+            organization=self.organization,
+        )
+
+        self.assertGreater(
+            len(result["retrieved_knowledge"]),
+            0,
+        )
+
+    def test_assistant_returns_context(self):
+        assistant = self.AIWorkflowAssistant()
+
+        result = assistant.ask(
+            query="How does verification work?",
+            organization=self.organization,
+            predictions={
+                "delay_probability": 0.78,
+            },
+        )
+
+        self.assertIn(
+            "predictions",
+            result["context"],
+        )
+
+        self.assertIn(
+            "retrieved_knowledge",
+            result["context"],
+        )
+
+    def test_assistant_can_use_analytics_without_query(self):
+        assistant = self.AIWorkflowAssistant()
+
+        result = assistant.ask(
+            predictions={
+                "delay_probability": 0.78,
+            },
+        )
+
+        self.assertIsNotNone(
+            result["query"]
+        )
+
+        self.assertIn(
+            "response",
+            result,
+        )
+
+        self.assertIsNone(
+            result["retrieved_knowledge"]
+        )
+
+    def test_empty_query_raises_error(self):
+        assistant = self.AIWorkflowAssistant()
+
+        with self.assertRaises(
+            self.AIWorkflowAssistantError
+        ):
+            assistant.ask(
+                query="   ",
+                organization=self.organization,
+            )
+
+    def test_query_without_organization_raises_error(self):
+        assistant = self.AIWorkflowAssistant()
+
+        with self.assertRaises(
+            self.AIWorkflowAssistantError
+        ):
+            assistant.ask(
+                query="What is verification?"
+            )
+
+    def test_default_analysis_query_is_used(self):
+        assistant = self.AIWorkflowAssistant()
+
+        result = assistant.ask(
+            predictions={
+                "delay_probability": 0.78,
+            },
+        )
+
+        self.assertEqual(
+            result["query"],
+            assistant.DEFAULT_QUERY,
+        )
+
+    def test_custom_analysis_service_is_supported(self):
+        class CustomAnalysisService:
+            def analyze(
+                self,
+                **kwargs,
+            ):
+                return {
+                    "response": "Custom assistant response",
+                    "context": {
+                        "custom": True,
+                    },
+                    "retrieved_knowledge": None,
+                    "prompt": "Custom prompt",
+                }
+
+        assistant = self.AIWorkflowAssistant(
+            analysis_service=CustomAnalysisService()
+        )
+
+        result = assistant.ask(
+            predictions={
+                "delay_probability": 0.78,
+            },
+        )
+
+        self.assertEqual(
+            result["response"],
+            "Custom assistant response",
+        )
+
+        self.assertEqual(
+            result["context"]["custom"],
+            True,
+        )
+
+    def test_query_is_trimmed(self):
+        assistant = self.AIWorkflowAssistant()
+
+        result = assistant.ask(
+            query="  What is verification?  ",
+            organization=self.organization,
+        )
+
+        self.assertEqual(
+            result["query"],
+            "What is verification?",
+        )
+        
+        
+class AIPromptBuilderTests(TestCase):
+    def setUp(self):
+        from apps.ai_engine.services.prompts import (
+            AIPromptBuilder,
+            AIPromptError,
+        )
+
+        self.AIPromptBuilder = AIPromptBuilder
+        self.AIPromptError = AIPromptError
+
+        self.builder = AIPromptBuilder()
+
+        self.context = (
+            "WORKFLOW\n"
+            "{'name': 'Order Fulfillment'}"
+        )
+
+    def test_workflow_analysis_prompt(self):
+        prompt = self.builder.build(
+            self.AIPromptBuilder.WORKFLOW_ANALYSIS,
+            self.context,
+        )
+
+        self.assertIn(
+            "Analyze the workflow context",
+            prompt,
+        )
+
+        self.assertIn(
+            self.context,
+            prompt,
+        )
+
+    def test_bottleneck_analysis_prompt(self):
+        prompt = self.builder.build(
+            self.AIPromptBuilder.BOTTLENECK_ANALYSIS,
+            self.context,
+        )
+
+        self.assertIn(
+            "bottleneck",
+            prompt.lower(),
+        )
+
+    def test_anomaly_analysis_prompt(self):
+        prompt = self.builder.build(
+            self.AIPromptBuilder.ANOMALY_ANALYSIS,
+            self.context,
+        )
+
+        self.assertIn(
+            "anomaly",
+            prompt.lower(),
+        )
+
+    def test_prediction_analysis_prompt(self):
+        prompt = self.builder.build(
+            self.AIPromptBuilder.PREDICTION_ANALYSIS,
+            self.context,
+        )
+
+        self.assertIn(
+            "prediction",
+            prompt.lower(),
+        )
+
+    def test_operational_summary_prompt(self):
+        prompt = self.builder.build(
+            self.AIPromptBuilder.OPERATIONAL_SUMMARY,
+            self.context,
+        )
+
+        self.assertIn(
+            "operational summary",
+            prompt.lower(),
+        )
+
+    def test_rag_question_prompt(self):
+        prompt = self.builder.build(
+            self.AIPromptBuilder.RAG_QUESTION,
+            self.context,
+        )
+
+        self.assertIn(
+            "retrieved knowledge",
+            prompt.lower(),
+        )
+
+    def test_all_prompt_types_are_supported(self):
+        prompt_types = [
+            self.AIPromptBuilder.WORKFLOW_ANALYSIS,
+            self.AIPromptBuilder.BOTTLENECK_ANALYSIS,
+            self.AIPromptBuilder.ANOMALY_ANALYSIS,
+            self.AIPromptBuilder.PREDICTION_ANALYSIS,
+            self.AIPromptBuilder.OPERATIONAL_SUMMARY,
+            self.AIPromptBuilder.RAG_QUESTION,
+        ]
+
+        for prompt_type in prompt_types:
+            prompt = self.builder.build(
+                prompt_type,
+                self.context,
+            )
+
+            self.assertTrue(
+                prompt.strip()
+            )
+
+    def test_invalid_prompt_type_raises_error(self):
+        with self.assertRaises(
+            self.AIPromptError
+        ):
+            self.builder.build(
+                "invalid_prompt_type",
+                self.context,
+            )
+
+    def test_none_context_raises_error(self):
+        with self.assertRaises(
+            self.AIPromptError
+        ):
+            self.builder.build(
+                self.AIPromptBuilder.WORKFLOW_ANALYSIS,
+                None,
+            )
+
+    def test_empty_context_raises_error(self):
+        with self.assertRaises(
+            self.AIPromptError
+        ):
+            self.builder.build(
+                self.AIPromptBuilder.WORKFLOW_ANALYSIS,
+                "   ",
+            )
+
+
+class AIPromptIntegrationTests(TestCase):
+    def test_analysis_returns_prompt_type(self):
+        service = AIAnalysisService()
+
+        result = service.analyze(
+            predictions={
+                "delay_probability": 0.78,
+            }
+        )
+
+        self.assertEqual(
+            result["prompt_type"],
+            "prediction_analysis",
+        )
+
+    def test_bottleneck_context_selects_bottleneck_prompt(self):
+        service = AIAnalysisService()
+
+        result = service.analyze(
+            bottlenecks=[
+                {
+                    "step_name": "Verification",
+                    "severity": "HIGH",
+                }
+            ]
+        )
+
+        self.assertEqual(
+            result["prompt_type"],
+            "bottleneck_analysis",
+        )
+
+        self.assertIn(
+            "bottleneck",
+            result["prompt"].lower(),
+        )
+
+    def test_anomaly_context_selects_anomaly_prompt(self):
+        service = AIAnalysisService()
+
+        result = service.analyze(
+            anomalies=[
+                {
+                    "step_name": "Verification",
+                    "is_anomaly": True,
+                }
+            ]
+        )
+
+        self.assertEqual(
+            result["prompt_type"],
+            "anomaly_analysis",
+        )
+
+    def test_query_selects_rag_prompt(self):
+        organization = Organization.objects.create(
+            name="Prompt RAG Organization",
+            slug="prompt-rag-organization",
+            industry="Technology",
+            description="Organization used for prompt RAG tests.",
+        )
+
+        document = KnowledgeDocument.objects.create(
+            organization=organization,
+            title="Prompt Knowledge",
+            source_type=(
+                KnowledgeDocument.SourceType.MANUAL
+            ),
+            content=(
+                "Verification checks payment information."
+            ),
+        )
+
+        chunk = KnowledgeChunk.objects.create(
+            document=document,
+            chunk_index=0,
+            content=(
+                "Verification checks payment information."
+            ),
+            token_count=5,
+        )
+
+        KnowledgeEmbeddingService().embed_chunk(
+            chunk
+        )
+
+        service = AIAnalysisService()
+
+        result = service.analyze(
+            query="What does verification do?",
+            organization=organization,
+        )
+
+        self.assertEqual(
+            result["prompt_type"],
+            "rag_question",
+        )
+
+        self.assertIn(
+            "retrieved knowledge",
+            result["prompt"].lower(),
+        )
+
+    def test_explicit_prompt_type_is_respected(self):
+        service = AIAnalysisService()
+
+        result = service.analyze(
+            predictions={
+                "delay_probability": 0.78,
+            },
+            prompt_type=(
+                AIPromptBuilder.OPERATIONAL_SUMMARY
+            ),
+        )
+
+        self.assertEqual(
+            result["prompt_type"],
+            AIPromptBuilder.OPERATIONAL_SUMMARY,
+        )
+
+        self.assertIn(
+            "operational summary",
+            result["prompt"].lower(),
+        )

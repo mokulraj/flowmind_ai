@@ -4,30 +4,18 @@ import os
 from dotenv import load_dotenv
 
 
-# ============================================================
-# BASE DIRECTORY
-# ============================================================
-
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-
-# ============================================================
-# ENVIRONMENT VARIABLES
-# ============================================================
 
 load_dotenv(BASE_DIR / ".env")
 
 
-# ============================================================
-# SECURITY
-# ============================================================
-
 SECRET_KEY = os.getenv(
     "SECRET_KEY",
-    "django-insecure-development-only-key",
+    "django-development-secret-key-change-later",
 )
 
 DEBUG = os.getenv("DEBUG", "True").lower() == "true"
+
 
 ALLOWED_HOSTS = [
     host.strip()
@@ -39,12 +27,7 @@ ALLOWED_HOSTS = [
 ]
 
 
-# ============================================================
-# APPLICATIONS
-# ============================================================
-
 INSTALLED_APPS = [
-    # Django
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -52,26 +35,14 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
 
-    # Third-party
     "rest_framework",
 
-    # FlowMind
     "apps.accounts",
     "apps.organizations",
     "apps.workflows",
+    "apps.datasets",
 ]
 
-
-# ============================================================
-# CUSTOM USER MODEL
-# ============================================================
-
-AUTH_USER_MODEL = "accounts.User"
-
-
-# ============================================================
-# MIDDLEWARE
-# ============================================================
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -84,16 +55,8 @@ MIDDLEWARE = [
 ]
 
 
-# ============================================================
-# URL CONFIGURATION
-# ============================================================
-
 ROOT_URLCONF = "config.urls"
 
-
-# ============================================================
-# TEMPLATES
-# ============================================================
 
 TEMPLATES = [
     {
@@ -113,18 +76,8 @@ TEMPLATES = [
 ]
 
 
-# ============================================================
-# WSGI / ASGI
-# ============================================================
-
 WSGI_APPLICATION = "config.wsgi.application"
 
-ASGI_APPLICATION = "config.asgi.application"
-
-
-# ============================================================
-# DATABASE
-# ============================================================
 
 DATABASES = {
     "default": {
@@ -138,41 +91,21 @@ DATABASES = {
 }
 
 
-# ============================================================
-# PASSWORD VALIDATION
-# ============================================================
-
 AUTH_PASSWORD_VALIDATORS = [
     {
-        "NAME": (
-            "django.contrib.auth.password_validation."
-            "UserAttributeSimilarityValidator"
-        ),
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
     },
     {
-        "NAME": (
-            "django.contrib.auth.password_validation."
-            "MinimumLengthValidator"
-        ),
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
     },
     {
-        "NAME": (
-            "django.contrib.auth.password_validation."
-            "CommonPasswordValidator"
-        ),
+        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
     },
     {
-        "NAME": (
-            "django.contrib.auth.password_validation."
-            "NumericPasswordValidator"
-        ),
+        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
 
-
-# ============================================================
-# INTERNATIONALIZATION
-# ============================================================
 
 LANGUAGE_CODE = "en-us"
 
@@ -183,41 +116,28 @@ USE_I18N = True
 USE_TZ = True
 
 
-# ============================================================
-# STATIC FILES
-# ============================================================
-
-STATIC_URL = "/static/"
-
-STATIC_ROOT = BASE_DIR / "staticfiles"
+STATIC_URL = "static/"
 
 STATICFILES_DIRS = [
     BASE_DIR / "static",
 ]
 
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
-# ============================================================
-# MEDIA FILES
-# ============================================================
 
-MEDIA_URL = "/media/"
+MEDIA_URL = "media/"
 
 MEDIA_ROOT = BASE_DIR / "media"
 
 
-# ============================================================
-# DEFAULT PRIMARY KEY
-# ============================================================
-
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
-# ============================================================
-# AUTHENTICATION REDIRECTS
-# ============================================================
+AUTH_USER_MODEL = "accounts.User"
 
-LOGIN_URL = "/login/"
 
-LOGIN_REDIRECT_URL = "/dashboard/"
+LOGIN_URL = "/accounts/login/"
+
+LOGIN_REDIRECT_URL = "/"
 
 LOGOUT_REDIRECT_URL = "/"

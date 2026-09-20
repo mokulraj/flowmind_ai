@@ -1,0 +1,11 @@
+order_id,step_name,duration_minutes,status
+ORD-001,Order Received,2.0,completed
+ORD-001,Payment Verification,3.0,completed
+ORD-001,Verification,5.0,completed
+ORD-001,Packing,8.0,completed
+ORD-001,Shipping,10.0,completed
+ORD-002,Order Received,2.5,completed
+ORD-002,Payment Verification,3.2,completed
+ORD-002,Verification,6.0,completed
+ORD-002,Packing,9.0,completed
+ORD-002,Shipping,11.0,completed

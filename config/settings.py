@@ -46,6 +46,8 @@ INSTALLED_APPS = [
     "apps.bottleneck_detection",
     "apps.anomaly_detection",
     "apps.predictions",
+    "apps.ai_engine",
+    "apps.recommendations",
 ]
 
 

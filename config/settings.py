@@ -41,6 +41,8 @@ INSTALLED_APPS = [
     "apps.organizations",
     "apps.workflows",
     "apps.datasets",
+    "apps.preprocessing",
+    "apps.analytics",
 ]
 
 

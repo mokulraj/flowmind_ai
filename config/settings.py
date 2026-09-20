@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "apps.ai_engine",
     "apps.recommendations",
     "apps.simulations",
+    "apps.reports",
 ]
 
 

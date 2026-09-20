@@ -3,6 +3,10 @@ from django.test import TestCase
 from apps.accounts.models import User
 from apps.organizations.models import Organization, OrganizationMember
 from apps.simulations.models import Simulation
+from apps.simulations.services.bottleneck import (
+    BottleneckSimulationError,
+    BottleneckSimulationService,
+)
 from apps.simulations.services.engine import (
     SimulationEngine,
     SimulationEngineError,
@@ -10,7 +14,7 @@ from apps.simulations.services.engine import (
 from apps.workflows.models import Workflow
 
 
-class SimulationModelTests(TestCase):
+class SimulationTestMixin:
     def setUp(self):
         self.user = User.objects.create_user(
             username="simulation_user",
@@ -48,6 +52,8 @@ class SimulationModelTests(TestCase):
 
         return Simulation.objects.create(**defaults)
 
+
+class SimulationModelTests(SimulationTestMixin, TestCase):
     def test_simulation_can_be_created(self):
         simulation = self.create_simulation(
             name="20 Percent Workload Increase",
@@ -198,45 +204,10 @@ class SimulationModelTests(TestCase):
         )
 
 
-class SimulationEngineTests(TestCase):
+class SimulationEngineTests(SimulationTestMixin, TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(
-            username="engine_user",
-            email="engine@example.com",
-            password="TestPassword123!",
-            role=User.Role.ADMIN,
-        )
-
-        self.organization = Organization.objects.create(
-            name="Engine Test Organization",
-            slug="engine-test-organization",
-        )
-
-        OrganizationMember.objects.create(
-            organization=self.organization,
-            user=self.user,
-            role=User.Role.ADMIN,
-        )
-
-        self.workflow = Workflow.objects.create(
-            organization=self.organization,
-            created_by=self.user,
-            name="Engine Workflow",
-            description="Workflow used for engine tests.",
-        )
-
+        super().setUp()
         self.engine = SimulationEngine()
-
-    def create_simulation(self, **kwargs):
-        defaults = {
-            "organization": self.organization,
-            "workflow": self.workflow,
-            "name": "Engine Simulation",
-        }
-
-        defaults.update(kwargs)
-
-        return Simulation.objects.create(**defaults)
 
     def test_engine_projects_event_count_by_workload_percentage(self):
         simulation = self.create_simulation(
@@ -463,4 +434,298 @@ class SimulationEngineTests(TestCase):
             self.engine.run(
                 simulation,
                 baseline_total_duration=-100.0,
+            )
+
+
+class BottleneckSimulationTests(SimulationTestMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        self.service = BottleneckSimulationService()
+
+    def test_high_severity_bottleneck_increases_more_than_workload_factor(self):
+        simulation = self.create_simulation(
+            workload_change_percent=20.0,
+        )
+
+        bottlenecks = [
+            {
+                "step_name": "Verification",
+                "avg_duration": 12.1,
+                "severity": "HIGH",
+            },
+        ]
+
+        result = self.service.run(
+            simulation,
+            bottlenecks,
+        )
+
+        bottleneck = result.results["bottlenecks"][0]
+
+        self.assertEqual(
+            bottleneck["step_name"],
+            "Verification",
+        )
+        self.assertEqual(
+            bottleneck["severity"],
+            "HIGH",
+        )
+        self.assertEqual(
+            bottleneck["baseline_avg_duration"],
+            12.1,
+        )
+        self.assertEqual(
+            bottleneck["workload_factor"],
+            1.2,
+        )
+        self.assertEqual(
+            bottleneck["severity_multiplier"],
+            1.35,
+        )
+        self.assertAlmostEqual(
+            bottleneck["projected_avg_duration"],
+            19.602,
+        )
+
+    def test_medium_severity_bottleneck_uses_medium_multiplier(self):
+        simulation = self.create_simulation(
+            workload_change_percent=20.0,
+        )
+
+        bottlenecks = [
+            {
+                "step_name": "Packing",
+                "avg_duration": 10.0,
+                "severity": "MEDIUM",
+            },
+        ]
+
+        result = self.service.run(
+            simulation,
+            bottlenecks,
+        )
+
+        bottleneck = result.results["bottlenecks"][0]
+
+        self.assertEqual(
+            bottleneck["severity_multiplier"],
+            1.20,
+        )
+        self.assertAlmostEqual(
+            bottleneck["projected_avg_duration"],
+            14.4,
+        )
+
+    def test_critical_bottleneck_uses_critical_multiplier(self):
+        simulation = self.create_simulation(
+            workload_change_percent=20.0,
+        )
+
+        bottlenecks = [
+            {
+                "step_name": "Verification",
+                "avg_duration": 10.0,
+                "severity": "CRITICAL",
+            },
+        ]
+
+        result = self.service.run(
+            simulation,
+            bottlenecks,
+        )
+
+        bottleneck = result.results["bottlenecks"][0]
+
+        self.assertEqual(
+            bottleneck["severity_multiplier"],
+            1.50,
+        )
+        self.assertAlmostEqual(
+            bottleneck["projected_avg_duration"],
+            18.0,
+        )
+
+    def test_multiple_bottlenecks_are_simulated(self):
+        simulation = self.create_simulation(
+            workload_change_percent=20.0,
+        )
+
+        bottlenecks = [
+            {
+                "step_name": "Verification",
+                "avg_duration": 12.1,
+                "severity": "HIGH",
+            },
+            {
+                "step_name": "Packing",
+                "avg_duration": 8.0,
+                "severity": "MEDIUM",
+            },
+        ]
+
+        result = self.service.run(
+            simulation,
+            bottlenecks,
+        )
+
+        self.assertEqual(
+            result.results["bottleneck_count"],
+            2,
+        )
+
+        self.assertEqual(
+            len(result.results["bottlenecks"]),
+            2,
+        )
+
+        self.assertAlmostEqual(
+            result.results["baseline_bottleneck_duration"],
+            20.1,
+        )
+
+        self.assertAlmostEqual(
+            result.results["projected_bottleneck_duration"],
+            19.602 + 11.52,
+        )
+
+    def test_workload_reduction_does_not_apply_severity_penalty(self):
+        simulation = self.create_simulation(
+            workload_change_percent=-20.0,
+        )
+
+        bottlenecks = [
+            {
+                "step_name": "Verification",
+                "avg_duration": 10.0,
+                "severity": "CRITICAL",
+            },
+        ]
+
+        result = self.service.run(
+            simulation,
+            bottlenecks,
+        )
+
+        bottleneck = result.results["bottlenecks"][0]
+
+        self.assertEqual(
+            bottleneck["workload_factor"],
+            0.8,
+        )
+
+        self.assertAlmostEqual(
+            bottleneck["projected_avg_duration"],
+            8.0,
+        )
+
+    def test_zero_workload_change_preserves_duration(self):
+        simulation = self.create_simulation(
+        workload_change_percent=0.0,
+    )
+
+        bottlenecks = [
+            {
+                "step_name": "Verification",
+                "avg_duration": 10.0,
+                "severity": "HIGH",
+            },
+        ]
+
+        result = self.service.run(
+            simulation,
+            bottlenecks,
+        )
+
+        bottleneck = result.results["bottlenecks"][0]
+
+        self.assertEqual(
+            bottleneck["workload_factor"],
+            1.0,
+        )
+
+        self.assertAlmostEqual(
+            bottleneck["projected_avg_duration"],
+            10.0,
+        )
+
+    def test_bottleneck_service_accepts_object_records(self):
+        class BottleneckRecord:
+            step_name = "Verification"
+            avg_duration = 12.1
+            severity = "HIGH"
+
+        simulation = self.create_simulation(
+            workload_change_percent=20.0,
+        )
+
+        result = self.service.run(
+            simulation,
+            [BottleneckRecord()],
+        )
+
+        bottleneck = result.results["bottlenecks"][0]
+
+        self.assertEqual(
+            bottleneck["step_name"],
+            "Verification",
+        )
+        self.assertEqual(
+            bottleneck["severity"],
+            "HIGH",
+        )
+
+    def test_bottleneck_service_rejects_invalid_simulation(self):
+        with self.assertRaises(BottleneckSimulationError):
+            self.service.run(
+                "invalid",
+                [],
+            )
+
+    def test_bottleneck_service_rejects_invalid_bottleneck_collection(self):
+        simulation = self.create_simulation(
+            workload_change_percent=20.0,
+        )
+
+        with self.assertRaises(BottleneckSimulationError):
+            self.service.run(
+                simulation,
+                "invalid",
+            )
+
+    def test_bottleneck_service_rejects_non_numeric_duration(self):
+        simulation = self.create_simulation(
+            workload_change_percent=20.0,
+        )
+
+        bottlenecks = [
+            {
+                "step_name": "Verification",
+                "avg_duration": "12.1",
+                "severity": "HIGH",
+            },
+        ]
+
+        with self.assertRaises(BottleneckSimulationError):
+            self.service.run(
+                simulation,
+                bottlenecks,
+            )
+
+    def test_bottleneck_service_rejects_negative_duration(self):
+        simulation = self.create_simulation(
+            workload_change_percent=20.0,
+        )
+
+        bottlenecks = [
+            {
+                "step_name": "Verification",
+                "avg_duration": -1,
+                "severity": "HIGH",
+            },
+        ]
+
+        with self.assertRaises(BottleneckSimulationError):
+            self.service.run(
+                simulation,
+                bottlenecks,
             )

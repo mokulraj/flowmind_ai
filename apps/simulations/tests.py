@@ -12,6 +12,10 @@ from apps.simulations.services.engine import (
     SimulationEngine,
     SimulationEngineError,
 )
+from apps.simulations.services.pipeline import (
+    SimulationPipeline,
+    SimulationPipelineError,
+)
 from apps.simulations.services.recommendations import (
     SimulationRecommendationError,
     SimulationRecommendationService,
@@ -776,7 +780,7 @@ class SimulationRecommendationTests(SimulationTestMixin, TestCase):
 
         self.assertEqual(
             recommendation.priority,
-           "CRITICAL",
+            "CRITICAL",
         )
 
     def test_no_impact_returns_no_recommendation(self):
@@ -828,3 +832,191 @@ class SimulationRecommendationTests(SimulationTestMixin, TestCase):
 
         with self.assertRaises(SimulationRecommendationError):
             self.service.generate(simulation)
+
+
+class SimulationPipelineTests(SimulationTestMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        self.pipeline = SimulationPipeline()
+
+    def test_pipeline_runs_basic_simulation(self):
+        simulation = self.create_simulation(
+            name="Basic Pipeline Simulation",
+            workload_change_percent=20.0,
+        )
+
+        result = self.pipeline.run(
+            simulation,
+            baseline_event_count=5000,
+            baseline_avg_duration=12.1,
+            baseline_total_duration=10000.0,
+            generate_recommendation=False,
+        )
+
+        self.assertEqual(
+            result["simulation"].projected_event_count,
+            6000,
+        )
+
+        self.assertEqual(
+            result["simulation"].projected_total_duration,
+            12000.0,
+        )
+
+        self.assertIsNone(
+            result["recommendation"],
+        )
+
+    def test_pipeline_runs_bottleneck_simulation(self):
+        simulation = self.create_simulation(
+            name="Bottleneck Pipeline Simulation",
+            workload_change_percent=20.0,
+        )
+
+        bottlenecks = [
+            {
+                "step_name": "Verification",
+                "avg_duration": 12.1,
+                "severity": "HIGH",
+            },
+        ]
+
+        result = self.pipeline.run(
+            simulation,
+            baseline_event_count=5000,
+            baseline_avg_duration=12.1,
+            baseline_total_duration=10000.0,
+            bottlenecks=bottlenecks,
+            generate_recommendation=False,
+        )
+
+        self.assertEqual(
+            result["results"]["bottleneck_count"],
+            1,
+        )
+
+        self.assertAlmostEqual(
+            result["results"]["projected_bottleneck_duration"],
+            19.602,
+        )
+
+    def test_pipeline_generates_recommendation(self):
+        simulation = self.create_simulation(
+            name="Recommendation Pipeline Simulation",
+            workload_change_percent=20.0,
+        )
+
+        bottlenecks = [
+            {
+                "step_name": "Verification",
+                "avg_duration": 12.1,
+                "severity": "HIGH",
+            },
+        ]
+
+        result = self.pipeline.run(
+            simulation,
+            baseline_event_count=5000,
+            baseline_avg_duration=12.1,
+            baseline_total_duration=10000.0,
+            bottlenecks=bottlenecks,
+            generate_recommendation=True,
+        )
+
+        self.assertIsNotNone(
+            result["recommendation"],
+        )
+
+        self.assertEqual(
+            result["recommendation"].recommendation_type,
+            "CAPACITY",
+        )
+
+        self.assertEqual(
+            Recommendation.objects.count(),
+            1,
+        )
+
+    def test_pipeline_can_skip_recommendation(self):
+        simulation = self.create_simulation(
+            name="No Recommendation Simulation",
+            workload_change_percent=20.0,
+        )
+
+        result = self.pipeline.run(
+            simulation,
+            baseline_event_count=5000,
+            generate_recommendation=False,
+        )
+
+        self.assertIsNone(
+            result["recommendation"],
+        )
+
+        self.assertEqual(
+            Recommendation.objects.count(),
+            0,
+        )
+
+    def test_pipeline_returns_persisted_simulation(self):
+        simulation = self.create_simulation(
+            name="Persisted Pipeline Simulation",
+            workload_change_percent=20.0,
+        )
+
+        result = self.pipeline.run(
+            simulation,
+            baseline_event_count=5000,
+            generate_recommendation=False,
+        )
+
+        returned_simulation = result["simulation"]
+
+        self.assertEqual(
+            returned_simulation.pk,
+            simulation.pk,
+        )
+
+        self.assertEqual(
+            returned_simulation.status,
+            Simulation.Status.COMPLETED,
+        )
+
+    def test_pipeline_rejects_invalid_simulation(self):
+        with self.assertRaises(SimulationPipelineError):
+            self.pipeline.run("invalid")
+
+    def test_pipeline_wraps_engine_errors(self):
+        simulation = self.create_simulation(
+            name="Invalid Pipeline Simulation",
+            workload_change_percent=-100.0,
+        )
+
+        with self.assertRaises(SimulationPipelineError):
+            self.pipeline.run(
+                simulation,
+                baseline_event_count=5000,
+                generate_recommendation=False,
+            )
+
+    def test_pipeline_returns_results_dictionary(self):
+        simulation = self.create_simulation(
+            name="Results Pipeline Simulation",
+            workload_change_percent=20.0,
+        )
+
+        result = self.pipeline.run(
+            simulation,
+            baseline_event_count=5000,
+            generate_recommendation=False,
+        )
+
+        self.assertIsInstance(
+            result["results"],
+            dict,
+        )
+
+        self.assertEqual(
+            result["results"]["projected_event_count"],
+            6000,
+        )

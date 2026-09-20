@@ -5,9 +5,17 @@ from django.test import TestCase
 from apps.accounts.models import User
 from apps.organizations.models import Organization, OrganizationMember
 from apps.recommendations.models import Recommendation
+from apps.recommendations.services.ai_explanation import (
+    RecommendationAIExplanationError,
+    RecommendationAIExplanationService,
+)
 from apps.recommendations.services.engine import (
     RecommendationEngine,
     RecommendationEngineError,
+)
+from apps.recommendations.services.pipeline import (
+    RecommendationPipeline,
+    RecommendationPipelineError,
 )
 from apps.recommendations.services.scoring import (
     RecommendationScoringError,
@@ -687,11 +695,11 @@ class RecommendationScoringServiceTests(TestCase):
 
     def test_score_is_persisted(self):
         self.service.score(
-        recommendation=self.recommendation,
-        severity_score=90,
-        evidence_score=80,
-        impact_score=70,
-    )
+            recommendation=self.recommendation,
+            severity_score=90,
+            evidence_score=80,
+            impact_score=70,
+        )
 
         refreshed = Recommendation.objects.get(
             pk=self.recommendation.pk
@@ -743,13 +751,6 @@ class RecommendationScoringServiceTests(TestCase):
     def test_score_many_requires_input(self):
         with self.assertRaises(RecommendationScoringError):
             self.service.score_many(None)
-            
-            
-            
-from apps.recommendations.services.ai_explanation import (
-    RecommendationAIExplanationError,
-    RecommendationAIExplanationService,
-)
 
 
 class MockRecommendationAnalysisService:
@@ -997,3 +998,294 @@ class RecommendationAIExplanationServiceTests(TestCase):
             service.explain(
                 recommendation=self.recommendation
             )
+
+
+class MockPipelineAIExplanationService:
+    def __init__(self):
+        self.calls = []
+
+    def explain(self, recommendation):
+        self.calls.append(recommendation)
+
+        recommendation.ai_explanation = (
+            f"AI explanation for: {recommendation.title}"
+        )
+
+        recommendation.save(
+            update_fields=[
+                "ai_explanation",
+                "updated_at",
+            ]
+        )
+
+        return {
+            "recommendation": recommendation,
+            "response": recommendation.ai_explanation,
+        }
+
+
+class RecommendationPipelineTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="pipeline_user",
+            email="pipeline@example.com",
+            password="test-password-123",
+        )
+
+        self.organization = Organization.objects.create(
+            name="Pipeline Test Organization",
+            slug="pipeline-test-organization",
+        )
+
+        OrganizationMember.objects.create(
+            organization=self.organization,
+            user=self.user,
+            role=OrganizationMember.Role.ADMIN,
+        )
+
+        self.workflow = Workflow.objects.create(
+            organization=self.organization,
+            name="Pipeline Workflow",
+            created_by=self.user,
+        )
+
+        self.mock_ai_service = (
+            MockPipelineAIExplanationService()
+        )
+
+        self.pipeline = RecommendationPipeline(
+            ai_explanation_service=self.mock_ai_service
+        )
+
+    def test_pipeline_generates_recommendation(self):
+        bottlenecks = [
+            {
+                "step_name": "Verification",
+                "average_duration": 12.1,
+                "expected_duration": 5.0,
+                "delay_ratio": 2.42,
+                "delay_percentage": 142.0,
+            }
+        ]
+
+        result = self.pipeline.run(
+            organization=self.organization,
+            workflow=self.workflow,
+            bottlenecks=bottlenecks,
+        )
+
+        self.assertEqual(
+            result["recommendation_count"],
+            1,
+        )
+
+        self.assertEqual(
+            len(result["recommendations"]),
+            1,
+        )
+
+    def test_pipeline_scores_recommendation(self):
+        bottlenecks = [
+            {
+                "step_name": "Verification",
+                "average_duration": 12.1,
+                "expected_duration": 5.0,
+                "delay_ratio": 2.42,
+                "delay_percentage": 142.0,
+            }
+        ]
+
+        result = self.pipeline.run(
+            organization=self.organization,
+            workflow=self.workflow,
+            bottlenecks=bottlenecks,
+        )
+
+        recommendation = result["recommendations"][0]
+
+        self.assertGreater(
+            recommendation.score,
+            0,
+        )
+
+        self.assertGreater(
+            recommendation.severity_score,
+            0,
+        )
+
+        self.assertGreater(
+            recommendation.evidence_score,
+            0,
+        )
+
+        self.assertGreater(
+            recommendation.impact_score,
+            0,
+        )
+
+    def test_pipeline_generates_ai_explanation(self):
+        bottlenecks = [
+            {
+                "step_name": "Verification",
+                "average_duration": 12.1,
+                "expected_duration": 5.0,
+                "delay_ratio": 2.42,
+                "delay_percentage": 142.0,
+            }
+        ]
+
+        result = self.pipeline.run(
+            organization=self.organization,
+            workflow=self.workflow,
+            bottlenecks=bottlenecks,
+            generate_ai_explanations=True,
+        )
+
+        recommendation = result["recommendations"][0]
+
+        self.assertEqual(
+            recommendation.ai_explanation,
+            "AI explanation for: "
+            "Reduce Verification processing delay",
+        )
+
+        self.assertEqual(
+            len(self.mock_ai_service.calls),
+            1,
+        )
+
+    def test_pipeline_can_skip_ai_explanations(self):
+        bottlenecks = [
+            {
+                "step_name": "Verification",
+                "average_duration": 12.1,
+                "expected_duration": 5.0,
+                "delay_ratio": 2.42,
+                "delay_percentage": 142.0,
+            }
+        ]
+
+        result = self.pipeline.run(
+            organization=self.organization,
+            workflow=self.workflow,
+            bottlenecks=bottlenecks,
+            generate_ai_explanations=False,
+        )
+
+        self.assertEqual(
+            result["recommendation_count"],
+            1,
+        )
+
+        self.assertEqual(
+            len(self.mock_ai_service.calls),
+            0,
+        )
+
+        recommendation = result["recommendations"][0]
+
+        self.assertEqual(
+            recommendation.ai_explanation,
+            "",
+        )
+
+    def test_pipeline_handles_multiple_sources(self):
+        bottlenecks = [
+            {
+                "step_name": "Verification",
+                "average_duration": 12.1,
+                "expected_duration": 5.0,
+                "delay_ratio": 2.42,
+                "delay_percentage": 142.0,
+            }
+        ]
+
+        anomalies = [
+            {
+                "step_name": "Packing",
+                "duration_minutes": 31.0,
+                "anomaly_prediction": -1,
+                "anomaly_score": -0.25,
+                "is_anomaly": True,
+                "anomaly_severity": "HIGH",
+            }
+        ]
+
+        predictions = [
+            {
+                "step_name": "Shipping",
+                "predicted_duration_minutes": 11.0,
+            }
+        ]
+
+        result = self.pipeline.run(
+            organization=self.organization,
+            workflow=self.workflow,
+            bottlenecks=bottlenecks,
+            anomalies=anomalies,
+            predictions=predictions,
+        )
+
+        self.assertEqual(
+            result["recommendation_count"],
+            3,
+        )
+
+        self.assertEqual(
+            len(self.mock_ai_service.calls),
+            3,
+        )
+
+    def test_pipeline_requires_organization(self):
+        with self.assertRaises(
+            RecommendationPipelineError
+        ):
+            self.pipeline.run(
+                organization=None
+            )
+
+    def test_pipeline_returns_recommendations_sorted_by_score(self):
+        bottlenecks = [
+            {
+                "step_name": "Packing",
+                "average_duration": 8.0,
+                "expected_duration": 5.0,
+                "delay_ratio": 1.6,
+                "delay_percentage": 60.0,
+            },
+            {
+                "step_name": "Verification",
+                "average_duration": 15.0,
+                "expected_duration": 5.0,
+                "delay_ratio": 3.0,
+                "delay_percentage": 200.0,
+            },
+        ]
+
+        result = self.pipeline.run(
+            organization=self.organization,
+            workflow=self.workflow,
+        )
+
+        self.assertEqual(
+            result["recommendation_count"],
+            0,
+        )
+
+        result = self.pipeline.run(
+            organization=self.organization,
+            workflow=self.workflow,
+            bottlenecks=bottlenecks,
+        )
+
+        recommendations = result["recommendations"]
+
+        self.assertEqual(
+            len(recommendations),
+            2,
+        )
+
+        self.assertGreaterEqual(
+            recommendations[0].score,
+            recommendations[1].score,
+        )

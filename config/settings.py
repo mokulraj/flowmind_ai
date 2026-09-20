@@ -55,8 +55,9 @@ INSTALLED_APPS = [
     # Third-party
     "rest_framework",
 
-    # FlowMind applications
+    # FlowMind
     "apps.accounts",
+    "apps.organizations",
 ]
 
 

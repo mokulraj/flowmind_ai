@@ -2,6 +2,7 @@ from django.test import TestCase
 
 from apps.accounts.models import User
 from apps.organizations.models import Organization, OrganizationMember
+from apps.recommendations.models import Recommendation
 from apps.simulations.models import Simulation
 from apps.simulations.services.bottleneck import (
     BottleneckSimulationError,
@@ -10,6 +11,10 @@ from apps.simulations.services.bottleneck import (
 from apps.simulations.services.engine import (
     SimulationEngine,
     SimulationEngineError,
+)
+from apps.simulations.services.recommendations import (
+    SimulationRecommendationError,
+    SimulationRecommendationService,
 )
 from apps.workflows.models import Workflow
 
@@ -219,14 +224,8 @@ class SimulationEngineTests(SimulationTestMixin, TestCase):
             baseline_event_count=5000,
         )
 
-        self.assertEqual(
-            result.baseline_event_count,
-            5000,
-        )
-        self.assertEqual(
-            result.projected_event_count,
-            6000,
-        )
+        self.assertEqual(result.baseline_event_count, 5000)
+        self.assertEqual(result.projected_event_count, 6000)
 
     def test_engine_projects_total_duration_by_workload_percentage(self):
         simulation = self.create_simulation(
@@ -238,14 +237,8 @@ class SimulationEngineTests(SimulationTestMixin, TestCase):
             baseline_total_duration=10000.0,
         )
 
-        self.assertEqual(
-            result.baseline_total_duration,
-            10000.0,
-        )
-        self.assertEqual(
-            result.projected_total_duration,
-            12000.0,
-        )
+        self.assertEqual(result.baseline_total_duration, 10000.0)
+        self.assertEqual(result.projected_total_duration, 12000.0)
 
     def test_engine_keeps_average_duration_constant(self):
         simulation = self.create_simulation(
@@ -257,14 +250,8 @@ class SimulationEngineTests(SimulationTestMixin, TestCase):
             baseline_avg_duration=12.5,
         )
 
-        self.assertEqual(
-            result.baseline_avg_duration,
-            12.5,
-        )
-        self.assertEqual(
-            result.projected_avg_duration,
-            12.5,
-        )
+        self.assertEqual(result.baseline_avg_duration, 12.5)
+        self.assertEqual(result.projected_avg_duration, 12.5)
 
     def test_engine_supports_workload_reduction(self):
         simulation = self.create_simulation(
@@ -277,14 +264,8 @@ class SimulationEngineTests(SimulationTestMixin, TestCase):
             baseline_total_duration=10000.0,
         )
 
-        self.assertEqual(
-            result.projected_event_count,
-            4000,
-        )
-        self.assertEqual(
-            result.projected_total_duration,
-            8000.0,
-        )
+        self.assertEqual(result.projected_event_count, 4000)
+        self.assertEqual(result.projected_total_duration, 8000.0)
 
     def test_engine_supports_zero_workload_change(self):
         simulation = self.create_simulation(
@@ -298,18 +279,9 @@ class SimulationEngineTests(SimulationTestMixin, TestCase):
             baseline_total_duration=10000.0,
         )
 
-        self.assertEqual(
-            result.projected_event_count,
-            5000,
-        )
-        self.assertEqual(
-            result.projected_avg_duration,
-            12.5,
-        )
-        self.assertEqual(
-            result.projected_total_duration,
-            10000.0,
-        )
+        self.assertEqual(result.projected_event_count, 5000)
+        self.assertEqual(result.projected_avg_duration, 12.5)
+        self.assertEqual(result.projected_total_duration, 10000.0)
 
     def test_engine_uses_values_from_simulation_when_not_provided(self):
         simulation = self.create_simulation(
@@ -321,18 +293,9 @@ class SimulationEngineTests(SimulationTestMixin, TestCase):
 
         result = self.engine.run(simulation)
 
-        self.assertEqual(
-            result.projected_event_count,
-            6000,
-        )
-        self.assertEqual(
-            result.projected_avg_duration,
-            12.5,
-        )
-        self.assertEqual(
-            result.projected_total_duration,
-            12000.0,
-        )
+        self.assertEqual(result.projected_event_count, 6000)
+        self.assertEqual(result.projected_avg_duration, 12.5)
+        self.assertEqual(result.projected_total_duration, 12000.0)
 
     def test_engine_marks_simulation_completed(self):
         simulation = self.create_simulation(
@@ -363,26 +326,19 @@ class SimulationEngineTests(SimulationTestMixin, TestCase):
 
         simulation.refresh_from_db()
 
-        self.assertEqual(
-            simulation.projected_event_count,
-            6000,
-        )
-
+        self.assertEqual(simulation.projected_event_count, 6000)
         self.assertEqual(
             simulation.results["baseline_event_count"],
             5000,
         )
-
         self.assertEqual(
             simulation.results["projected_event_count"],
             6000,
         )
-
         self.assertEqual(
             simulation.results["event_count_change"],
             1000,
         )
-
         self.assertEqual(
             simulation.results["projected_total_duration"],
             12000.0,
@@ -455,21 +411,11 @@ class BottleneckSimulationTests(SimulationTestMixin, TestCase):
             },
         ]
 
-        result = self.service.run(
-            simulation,
-            bottlenecks,
-        )
-
+        result = self.service.run(simulation, bottlenecks)
         bottleneck = result.results["bottlenecks"][0]
 
-        self.assertEqual(
-            bottleneck["step_name"],
-            "Verification",
-        )
-        self.assertEqual(
-            bottleneck["severity"],
-            "HIGH",
-        )
+        self.assertEqual(bottleneck["step_name"], "Verification")
+        self.assertEqual(bottleneck["severity"], "HIGH")
         self.assertEqual(
             bottleneck["baseline_avg_duration"],
             12.1,
@@ -500,11 +446,7 @@ class BottleneckSimulationTests(SimulationTestMixin, TestCase):
             },
         ]
 
-        result = self.service.run(
-            simulation,
-            bottlenecks,
-        )
-
+        result = self.service.run(simulation, bottlenecks)
         bottleneck = result.results["bottlenecks"][0]
 
         self.assertEqual(
@@ -529,11 +471,7 @@ class BottleneckSimulationTests(SimulationTestMixin, TestCase):
             },
         ]
 
-        result = self.service.run(
-            simulation,
-            bottlenecks,
-        )
-
+        result = self.service.run(simulation, bottlenecks)
         bottleneck = result.results["bottlenecks"][0]
 
         self.assertEqual(
@@ -563,26 +501,20 @@ class BottleneckSimulationTests(SimulationTestMixin, TestCase):
             },
         ]
 
-        result = self.service.run(
-            simulation,
-            bottlenecks,
-        )
+        result = self.service.run(simulation, bottlenecks)
 
         self.assertEqual(
             result.results["bottleneck_count"],
             2,
         )
-
         self.assertEqual(
             len(result.results["bottlenecks"]),
             2,
         )
-
         self.assertAlmostEqual(
             result.results["baseline_bottleneck_duration"],
             20.1,
         )
-
         self.assertAlmostEqual(
             result.results["projected_bottleneck_duration"],
             19.602 + 11.52,
@@ -601,18 +533,13 @@ class BottleneckSimulationTests(SimulationTestMixin, TestCase):
             },
         ]
 
-        result = self.service.run(
-            simulation,
-            bottlenecks,
-        )
-
+        result = self.service.run(simulation, bottlenecks)
         bottleneck = result.results["bottlenecks"][0]
 
         self.assertEqual(
             bottleneck["workload_factor"],
             0.8,
         )
-
         self.assertAlmostEqual(
             bottleneck["projected_avg_duration"],
             8.0,
@@ -620,8 +547,8 @@ class BottleneckSimulationTests(SimulationTestMixin, TestCase):
 
     def test_zero_workload_change_preserves_duration(self):
         simulation = self.create_simulation(
-        workload_change_percent=0.0,
-    )
+            workload_change_percent=0.0,
+        )
 
         bottlenecks = [
             {
@@ -631,21 +558,40 @@ class BottleneckSimulationTests(SimulationTestMixin, TestCase):
             },
         ]
 
-        result = self.service.run(
-            simulation,
-            bottlenecks,
-        )
-
+        result = self.service.run(simulation, bottlenecks)
         bottleneck = result.results["bottlenecks"][0]
 
         self.assertEqual(
             bottleneck["workload_factor"],
             1.0,
         )
-
         self.assertAlmostEqual(
             bottleneck["projected_avg_duration"],
             10.0,
+        )
+
+    def test_empty_bottleneck_list_is_supported(self):
+        simulation = self.create_simulation(
+            workload_change_percent=20.0,
+        )
+
+        result = self.service.run(simulation, [])
+
+        self.assertEqual(
+            result.results["bottleneck_count"],
+            0,
+        )
+        self.assertEqual(
+            result.results["bottlenecks"],
+            [],
+        )
+        self.assertEqual(
+            result.results["baseline_bottleneck_duration"],
+            0,
+        )
+        self.assertEqual(
+            result.results["projected_bottleneck_duration"],
+            0,
         )
 
     def test_bottleneck_service_accepts_object_records(self):
@@ -676,10 +622,7 @@ class BottleneckSimulationTests(SimulationTestMixin, TestCase):
 
     def test_bottleneck_service_rejects_invalid_simulation(self):
         with self.assertRaises(BottleneckSimulationError):
-            self.service.run(
-                "invalid",
-                [],
-            )
+            self.service.run("invalid", [])
 
     def test_bottleneck_service_rejects_invalid_bottleneck_collection(self):
         simulation = self.create_simulation(
@@ -687,10 +630,7 @@ class BottleneckSimulationTests(SimulationTestMixin, TestCase):
         )
 
         with self.assertRaises(BottleneckSimulationError):
-            self.service.run(
-                simulation,
-                "invalid",
-            )
+            self.service.run(simulation, "invalid")
 
     def test_bottleneck_service_rejects_non_numeric_duration(self):
         simulation = self.create_simulation(
@@ -706,10 +646,7 @@ class BottleneckSimulationTests(SimulationTestMixin, TestCase):
         ]
 
         with self.assertRaises(BottleneckSimulationError):
-            self.service.run(
-                simulation,
-                bottlenecks,
-            )
+            self.service.run(simulation, bottlenecks)
 
     def test_bottleneck_service_rejects_negative_duration(self):
         simulation = self.create_simulation(
@@ -725,7 +662,169 @@ class BottleneckSimulationTests(SimulationTestMixin, TestCase):
         ]
 
         with self.assertRaises(BottleneckSimulationError):
-            self.service.run(
-                simulation,
-                bottlenecks,
-            )
+            self.service.run(simulation, bottlenecks)
+
+
+class SimulationRecommendationTests(SimulationTestMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        self.service = SimulationRecommendationService()
+
+    def test_creates_capacity_recommendation_from_completed_simulation(self):
+        simulation = self.create_simulation(
+            name="20 Percent Workload Scenario",
+            workload_change_percent=20.0,
+            status=Simulation.Status.COMPLETED,
+            results={
+                "baseline_event_count": 5000,
+                "projected_event_count": 6000,
+                "projected_bottleneck_duration": 19.602,
+                "baseline_bottleneck_duration": 12.1,
+                "bottlenecks": [
+                    {
+                        "step_name": "Verification",
+                        "severity": "HIGH",
+                    },
+                ],
+            },
+        )
+
+        recommendation = self.service.generate(simulation)
+
+        self.assertIsNotNone(recommendation)
+        self.assertEqual(
+            recommendation.organization,
+            self.organization,
+        )
+        self.assertEqual(
+            recommendation.workflow,
+            self.workflow,
+        )
+        self.assertEqual(
+            recommendation.recommendation_type,
+            "CAPACITY",
+        )
+        self.assertEqual(
+            recommendation.priority,
+            "MEDIUM",
+        )
+
+    def test_recommendation_contains_simulation_evidence(self):
+        simulation = self.create_simulation(
+            name="Simulation Evidence",
+            workload_change_percent=30.0,
+            status=Simulation.Status.COMPLETED,
+            results={
+                "baseline_event_count": 5000,
+                "projected_event_count": 6500,
+                "baseline_bottleneck_duration": 10.0,
+                "projected_bottleneck_duration": 15.0,
+            },
+        )
+
+        recommendation = self.service.generate(simulation)
+
+        self.assertEqual(
+            recommendation.evidence["source"],
+            "simulation",
+        )
+        self.assertEqual(
+            recommendation.evidence["simulation_id"],
+            simulation.id,
+        )
+        self.assertEqual(
+            recommendation.evidence["baseline_event_count"],
+            5000.0,
+        )
+        self.assertEqual(
+            recommendation.evidence["projected_event_count"],
+            6500.0,
+        )
+
+    def test_high_workload_change_creates_high_priority(self):
+        simulation = self.create_simulation(
+            workload_change_percent=30.0,
+            status=Simulation.Status.COMPLETED,
+            results={
+                "baseline_event_count": 5000,
+                "projected_event_count": 6500,
+                "baseline_bottleneck_duration": 10.0,
+                "projected_bottleneck_duration": 12.0,
+            },
+        )
+
+        recommendation = self.service.generate(simulation)
+
+        self.assertEqual(
+            recommendation.priority,
+            "HIGH",
+        )
+
+    def test_critical_workload_change_creates_critical_priority(self):
+        simulation = self.create_simulation(
+            workload_change_percent=50.0,
+            status=Simulation.Status.COMPLETED,
+            results={
+                "baseline_event_count": 5000,
+                "projected_event_count": 7500,
+                "baseline_bottleneck_duration": 10.0,
+                "projected_bottleneck_duration": 15.0,
+            },
+        )
+
+        recommendation = self.service.generate(simulation)
+
+        self.assertEqual(
+            recommendation.priority,
+           "CRITICAL",
+        )
+
+    def test_no_impact_returns_no_recommendation(self):
+        simulation = self.create_simulation(
+            workload_change_percent=0.0,
+            status=Simulation.Status.COMPLETED,
+            results={
+                "baseline_event_count": 5000,
+                "projected_event_count": 5000,
+                "baseline_bottleneck_duration": 10.0,
+                "projected_bottleneck_duration": 10.0,
+            },
+        )
+
+        recommendation = self.service.generate(simulation)
+
+        self.assertIsNone(recommendation)
+        self.assertEqual(
+            Recommendation.objects.count(),
+            0,
+        )
+
+    def test_requires_completed_simulation(self):
+        simulation = self.create_simulation(
+            workload_change_percent=20.0,
+            status=Simulation.Status.DRAFT,
+            results={
+                "baseline_event_count": 5000,
+                "projected_event_count": 6000,
+            },
+        )
+
+        with self.assertRaises(SimulationRecommendationError):
+            self.service.generate(simulation)
+
+    def test_requires_simulation_instance(self):
+        with self.assertRaises(SimulationRecommendationError):
+            self.service.generate("invalid")
+
+    def test_rejects_non_numeric_event_count(self):
+        simulation = self.create_simulation(
+            workload_change_percent=20.0,
+            status=Simulation.Status.COMPLETED,
+            results={
+                "baseline_event_count": "5000",
+                "projected_event_count": 6000,
+            },
+        )
+
+        with self.assertRaises(SimulationRecommendationError):
+            self.service.generate(simulation)

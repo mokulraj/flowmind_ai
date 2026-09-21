@@ -3,6 +3,8 @@ import pandas as pd
 from django.test import TestCase
 
 from apps.accounts.models import User
+from apps.audit.models import AuditLog
+from apps.notifications.models import Notification
 from apps.organizations.models import Organization, OrganizationMember
 from apps.recommendations.models import Recommendation
 from apps.recommendations.services.ai_explanation import (
@@ -1024,6 +1026,36 @@ class MockPipelineAIExplanationService:
         }
 
 
+class MockRecommendationNotificationService:
+    def __init__(self):
+        self.calls = []
+
+    def create_for_recommendation(
+        self,
+        *,
+        recommendation,
+        recipient=None,
+    ):
+        self.calls.append(
+            {
+                "recommendation": recommendation,
+                "recipient": recipient,
+            }
+        )
+
+        return Notification(
+            organization=recommendation.organization,
+            recipient=recipient,
+            workflow=recommendation.workflow,
+            notification_type=Notification.NotificationType.RECOMMENDATION,
+            priority=recommendation.priority,
+            title=recommendation.title,
+            message=recommendation.description,
+            related_object_type="recommendation",
+            related_object_id=recommendation.id,
+        )
+
+
 class RecommendationPipelineTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
@@ -1053,8 +1085,13 @@ class RecommendationPipelineTests(TestCase):
             MockPipelineAIExplanationService()
         )
 
+        self.mock_notification_service = (
+            MockRecommendationNotificationService()
+        )
+
         self.pipeline = RecommendationPipeline(
-            ai_explanation_service=self.mock_ai_service
+            ai_explanation_service=self.mock_ai_service,
+            notification_service=self.mock_notification_service,
         )
 
     def test_pipeline_generates_recommendation(self):
@@ -1288,4 +1325,189 @@ class RecommendationPipelineTests(TestCase):
         self.assertGreaterEqual(
             recommendations[0].score,
             recommendations[1].score,
+        )
+
+    def test_pipeline_creates_recommendation_notification(self):
+        bottlenecks = [
+            {
+                "step_name": "Verification",
+                "average_duration": 12.1,
+                "expected_duration": 5.0,
+                "delay_ratio": 2.42,
+                "delay_percentage": 142.0,
+            }
+        ]
+
+        result = self.pipeline.run(
+            organization=self.organization,
+            workflow=self.workflow,
+            bottlenecks=bottlenecks,
+        )
+
+        self.assertEqual(
+            result["recommendation_count"],
+            1,
+        )
+
+        self.assertEqual(
+            len(self.mock_notification_service.calls),
+            1,
+        )
+
+        call = self.mock_notification_service.calls[0]
+
+        self.assertEqual(
+            call["recommendation"],
+            result["recommendations"][0],
+        )
+
+        self.assertIsNone(
+            call["recipient"],
+        )
+
+    def test_pipeline_can_skip_notification_creation(self):
+        bottlenecks = [
+            {
+                "step_name": "Verification",
+                "average_duration": 12.1,
+                "expected_duration": 5.0,
+                "delay_ratio": 2.42,
+                "delay_percentage": 142.0,
+            }
+        ]
+
+        result = self.pipeline.run(
+            organization=self.organization,
+            workflow=self.workflow,
+            bottlenecks=bottlenecks,
+            create_notifications=False,
+        )
+
+        self.assertEqual(
+            result["recommendation_count"],
+            1,
+        )
+
+        self.assertEqual(
+            len(self.mock_notification_service.calls),
+            0,
+        )
+
+    def test_pipeline_creates_one_notification_per_recommendation(self):
+        bottlenecks = [
+            {
+                "step_name": "Verification",
+                "average_duration": 12.1,
+                "expected_duration": 5.0,
+                "delay_ratio": 2.42,
+                "delay_percentage": 142.0,
+            },
+            {
+                "step_name": "Packing",
+                "average_duration": 8.0,
+                "expected_duration": 5.0,
+                "delay_ratio": 1.6,
+                "delay_percentage": 60.0,
+            },
+        ]
+
+        result = self.pipeline.run(
+            organization=self.organization,
+            workflow=self.workflow,
+            bottlenecks=bottlenecks,
+        )
+
+        self.assertEqual(
+            result["recommendation_count"],
+            2,
+        )
+
+        self.assertEqual(
+            len(self.mock_notification_service.calls),
+            2,
+        )
+
+        notification_recommendation_ids = {
+            call["recommendation"].id
+            for call in self.mock_notification_service.calls
+        }
+
+        recommendation_ids = {
+            recommendation.id
+            for recommendation in result["recommendations"]
+        }
+
+        self.assertEqual(
+            notification_recommendation_ids,
+            recommendation_ids,
+        )
+
+    def test_pipeline_creates_audit_log(self):
+        bottlenecks = [
+            {
+                "step_name": "Verification",
+                "average_duration": 12.1,
+                "expected_duration": 5.0,
+                "delay_ratio": 2.42,
+                "delay_percentage": 142.0,
+            }
+        ]
+
+        result = self.pipeline.run(
+            organization=self.organization,
+            workflow=self.workflow,
+            bottlenecks=bottlenecks,
+            generate_ai_explanations=False,
+            create_notifications=False,
+        )
+
+        self.assertEqual(
+            result["recommendation_count"],
+            1,
+        )
+
+        audit_log = AuditLog.objects.get(
+            organization=self.organization,
+            action=AuditLog.Action.GENERATE,
+            object_type="RecommendationPipeline",
+        )
+
+        self.assertEqual(
+            audit_log.object_id,
+            self.workflow.id,
+        )
+
+        self.assertEqual(
+            audit_log.user,
+            None,
+        )
+
+        self.assertEqual(
+            audit_log.metadata["organization_id"],
+            self.organization.id,
+        )
+
+        self.assertEqual(
+            audit_log.metadata["workflow_id"],
+            self.workflow.id,
+        )
+
+        self.assertEqual(
+            audit_log.metadata["recommendation_count"],
+            1,
+        )
+
+        self.assertEqual(
+            audit_log.metadata["recommendation_types"][
+                Recommendation.RecommendationType.BOTTLENECK
+            ],
+            1,
+        )
+
+        self.assertFalse(
+            audit_log.metadata["generate_ai_explanations"]
+        )
+
+        self.assertFalse(
+            audit_log.metadata["create_notifications"]
         )

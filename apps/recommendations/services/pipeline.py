@@ -1,3 +1,8 @@
+from apps.audit.models import AuditLog
+from apps.audit.services.audit_service import AuditLogService
+from apps.notifications.services.recommendation_notifications import (
+    RecommendationNotificationService,
+)
 from apps.recommendations.models import Recommendation
 from apps.recommendations.services.ai_explanation import (
     RecommendationAIExplanationError,
@@ -19,7 +24,8 @@ class RecommendationPipelineError(Exception):
 
 class RecommendationPipeline:
     """
-    Orchestrates recommendation generation, scoring, and AI explanation.
+    Orchestrates recommendation generation, scoring, AI explanation,
+    notification creation, and audit logging.
 
     Flow:
 
@@ -31,6 +37,10 @@ class RecommendationPipeline:
             ↓
         RecommendationAIExplanationService
             ↓
+        RecommendationNotificationService
+            ↓
+        AuditLogService
+            ↓
         Final recommendations
     """
 
@@ -39,6 +49,7 @@ class RecommendationPipeline:
         engine=None,
         scoring_service=None,
         ai_explanation_service=None,
+        notification_service=None,
     ):
         self.engine = engine or RecommendationEngine()
 
@@ -52,6 +63,11 @@ class RecommendationPipeline:
             or RecommendationAIExplanationService()
         )
 
+        self.notification_service = (
+            notification_service
+            or RecommendationNotificationService
+        )
+
     def run(
         self,
         organization,
@@ -61,6 +77,7 @@ class RecommendationPipeline:
         predictions=None,
         data_quality=None,
         generate_ai_explanations=True,
+        create_notifications=True,
     ):
         if organization is None:
             raise RecommendationPipelineError(
@@ -128,6 +145,19 @@ class RecommendationPipeline:
             )
         )
 
+        if create_notifications:
+            self._create_notifications(
+                explained_recommendations
+            )
+
+        self._create_audit_log(
+            organization=organization,
+            workflow=workflow,
+            recommendations=explained_recommendations,
+            generate_ai_explanations=generate_ai_explanations,
+            create_notifications=create_notifications,
+        )
+
         return {
             "organization": organization,
             "workflow": workflow,
@@ -136,6 +166,88 @@ class RecommendationPipeline:
                 explained_recommendations
             ),
         }
+
+    def _create_notifications(self, recommendations):
+        for recommendation in recommendations:
+            try:
+                self.notification_service.create_for_recommendation(
+                    recommendation=recommendation,
+                )
+            except Exception as exc:
+                raise RecommendationPipelineError(
+                    f"Failed to create recommendation notification: {exc}"
+                ) from exc
+
+    def _create_audit_log(
+        self,
+        organization,
+        workflow,
+        recommendations,
+        generate_ai_explanations,
+        create_notifications,
+    ):
+        recommendation_types = {}
+
+        for recommendation in recommendations:
+            recommendation_type = (
+                recommendation.recommendation_type
+            )
+
+            recommendation_types[recommendation_type] = (
+                recommendation_types.get(
+                    recommendation_type,
+                    0,
+                )
+                + 1
+            )
+
+        priority_counts = {}
+
+        for recommendation in recommendations:
+            priority = recommendation.priority
+
+            priority_counts[priority] = (
+                priority_counts.get(priority, 0) + 1
+            )
+
+        AuditLogService.create(
+            organization=organization,
+            action=AuditLog.Action.GENERATE,
+            object_type="RecommendationPipeline",
+            object_id=(
+                workflow.id
+                if workflow is not None
+                else None
+            ),
+            object_repr=(
+                str(workflow)
+                if workflow is not None
+                else organization.name
+            ),
+            description=(
+                f"Recommendation generation completed for "
+                f"organization '{organization.name}'."
+            ),
+            metadata={
+                "organization_id": organization.id,
+                "workflow_id": (
+                    workflow.id
+                    if workflow is not None
+                    else None
+                ),
+                "recommendation_count": len(
+                    recommendations
+                ),
+                "recommendation_types": recommendation_types,
+                "priority_counts": priority_counts,
+                "generate_ai_explanations": (
+                    generate_ai_explanations
+                ),
+                "create_notifications": (
+                    create_notifications
+                ),
+            },
+        )
 
     def _calculate_scores(self, recommendation):
         severity_score = self._severity_score(

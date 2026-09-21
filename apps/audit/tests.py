@@ -6,13 +6,12 @@ from apps.organizations.models import (
     Organization,
     OrganizationMember,
 )
-
-from .models import (
+from apps.workflows.models import (
     Workflow,
     WorkflowConnection,
     WorkflowStep,
 )
-from .services.workflow_service import WorkflowService
+from apps.workflows.services.workflow_service import WorkflowService
 
 
 class WorkflowModelTests(TestCase):
@@ -63,8 +62,15 @@ class WorkflowModelTests(TestCase):
             created_by=self.user,
         )
 
-        self.assertEqual(workflow.organization, self.organization)
-        self.assertEqual(workflow.created_by, self.user)
+        self.assertEqual(
+            workflow.organization,
+            self.organization,
+        )
+
+        self.assertEqual(
+            workflow.created_by,
+            self.user,
+        )
 
     def test_workflow_step_creation(self):
         workflow = Workflow.objects.create(
@@ -82,8 +88,15 @@ class WorkflowModelTests(TestCase):
             responsible_role="Verification Specialist",
         )
 
-        self.assertEqual(step.workflow, workflow)
-        self.assertEqual(step.order, 1)
+        self.assertEqual(
+            step.workflow,
+            workflow,
+        )
+
+        self.assertEqual(
+            step.order,
+            1,
+        )
 
     def test_connection_between_steps(self):
         workflow = Workflow.objects.create(
@@ -110,8 +123,15 @@ class WorkflowModelTests(TestCase):
             target_step=second_step,
         )
 
-        self.assertEqual(connection.source_step, first_step)
-        self.assertEqual(connection.target_step, second_step)
+        self.assertEqual(
+            connection.source_step,
+            first_step,
+        )
+
+        self.assertEqual(
+            connection.target_step,
+            second_step,
+        )
 
     def test_service_creates_workflow(self):
         workflow = WorkflowService.create_workflow(
@@ -120,8 +140,15 @@ class WorkflowModelTests(TestCase):
             name="Customer Support",
         )
 
-        self.assertEqual(workflow.name, "Customer Support")
-        self.assertEqual(workflow.organization, self.organization)
+        self.assertEqual(
+            workflow.name,
+            "Customer Support",
+        )
+
+        self.assertEqual(
+            workflow.organization,
+            self.organization,
+        )
 
     def test_user_cannot_access_other_organization_workflow(self):
         workflow = Workflow.objects.create(
@@ -153,25 +180,41 @@ class WorkflowModelTests(TestCase):
             object_id=workflow.id,
         )
 
-        self.assertEqual(audit_log.user, self.user)
-        self.assertEqual(audit_log.action, AuditLog.Action.CREATE)
-        self.assertEqual(audit_log.object_repr, str(workflow))
+        self.assertEqual(
+            audit_log.user,
+            self.user,
+        )
+
+        self.assertEqual(
+            audit_log.action,
+            AuditLog.Action.CREATE,
+        )
+
+        self.assertEqual(
+            audit_log.object_repr,
+            str(workflow),
+        )
+
         self.assertEqual(
             audit_log.description,
             "Created workflow 'Audited Workflow'.",
         )
+
         self.assertEqual(
             audit_log.metadata["workflow_id"],
             workflow.id,
         )
+
         self.assertEqual(
             audit_log.metadata["workflow_name"],
             "Audited Workflow",
         )
+
         self.assertEqual(
             audit_log.metadata["category"],
             workflow.category,
         )
+
         self.assertEqual(
             audit_log.metadata["status"],
             workflow.status,
@@ -190,7 +233,10 @@ class WorkflowModelTests(TestCase):
             object_id=workflow.id,
         )
 
-        self.assertEqual(audit_logs.count(), 0)
+        self.assertEqual(
+            audit_logs.count(),
+            0,
+        )
 
     def test_workflow_creation_and_audit_log_share_organization(self):
         workflow = WorkflowService.create_workflow(
@@ -208,6 +254,7 @@ class WorkflowModelTests(TestCase):
             workflow.organization_id,
             audit_log.organization_id,
         )
+
         self.assertEqual(
             audit_log.organization,
             self.organization,
@@ -225,7 +272,10 @@ class WorkflowModelTests(TestCase):
             object_id=workflow.id,
         )
 
-        self.assertEqual(audit_log.user, workflow.created_by)
+        self.assertEqual(
+            audit_log.user,
+            workflow.created_by,
+        )
 
     def test_service_creates_workflow_step_audit_log(self):
         workflow = Workflow.objects.create(
@@ -250,9 +300,21 @@ class WorkflowModelTests(TestCase):
             object_id=step.id,
         )
 
-        self.assertEqual(audit_log.user, self.user)
-        self.assertEqual(audit_log.action, AuditLog.Action.CREATE)
-        self.assertEqual(audit_log.object_repr, str(step))
+        self.assertEqual(
+            audit_log.user,
+            self.user,
+        )
+
+        self.assertEqual(
+            audit_log.action,
+            AuditLog.Action.CREATE,
+        )
+
+        self.assertEqual(
+            audit_log.object_repr,
+            str(step),
+        )
+
         self.assertEqual(
             audit_log.description,
             (
@@ -308,18 +370,22 @@ class WorkflowModelTests(TestCase):
             audit_log.metadata["workflow_id"],
             workflow.id,
         )
+
         self.assertEqual(
             audit_log.metadata["workflow_name"],
             workflow.name,
         )
+
         self.assertEqual(
             audit_log.metadata["step_id"],
             step.id,
         )
+
         self.assertEqual(
             audit_log.metadata["step_name"],
             step.name,
         )
+
         self.assertEqual(
             audit_log.metadata["order"],
             step.order,
@@ -332,14 +398,12 @@ class WorkflowModelTests(TestCase):
             created_by=self.user,
         )
 
-        source_step = WorkflowStep.objects.create(
-            workflow=workflow,
+        source_step = workflow.steps.create(
             name="Order Received",
             order=1,
         )
 
-        target_step = WorkflowStep.objects.create(
-            workflow=workflow,
+        target_step = workflow.steps.create(
             name="Verification",
             order=2,
         )
@@ -357,15 +421,21 @@ class WorkflowModelTests(TestCase):
             object_id=connection.id,
         )
 
-        self.assertEqual(audit_log.user, self.user)
+        self.assertEqual(
+            audit_log.user,
+            self.user,
+        )
+
         self.assertEqual(
             audit_log.action,
             AuditLog.Action.CREATE,
         )
+
         self.assertEqual(
             audit_log.object_repr,
             str(connection),
         )
+
         self.assertEqual(
             audit_log.description,
             (
@@ -382,14 +452,12 @@ class WorkflowModelTests(TestCase):
             created_by=self.user,
         )
 
-        source_step = WorkflowStep.objects.create(
-            workflow=workflow,
+        source_step = workflow.steps.create(
             name="Order Received",
             order=1,
         )
 
-        target_step = WorkflowStep.objects.create(
-            workflow=workflow,
+        target_step = workflow.steps.create(
             name="Verification",
             order=2,
         )
@@ -411,30 +479,37 @@ class WorkflowModelTests(TestCase):
             audit_log.metadata["workflow_id"],
             workflow.id,
         )
+
         self.assertEqual(
             audit_log.metadata["workflow_name"],
             workflow.name,
         )
+
         self.assertEqual(
             audit_log.metadata["connection_id"],
             connection.id,
         )
+
         self.assertEqual(
             audit_log.metadata["source_step_id"],
             source_step.id,
         )
+
         self.assertEqual(
             audit_log.metadata["source_step_name"],
             source_step.name,
         )
+
         self.assertEqual(
             audit_log.metadata["target_step_id"],
             target_step.id,
         )
+
         self.assertEqual(
             audit_log.metadata["target_step_name"],
             target_step.name,
         )
+
         self.assertEqual(
             audit_log.metadata["condition"],
             "Payment approved",
@@ -447,14 +522,12 @@ class WorkflowModelTests(TestCase):
             created_by=self.user,
         )
 
-        source_step = WorkflowStep.objects.create(
-            workflow=workflow,
+        source_step = workflow.steps.create(
             name="Order Received",
             order=1,
         )
 
-        target_step = WorkflowStep.objects.create(
-            workflow=workflow,
+        target_step = workflow.steps.create(
             name="Verification",
             order=2,
         )

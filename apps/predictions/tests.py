@@ -8,7 +8,10 @@ from django.core.files.uploadedfile import (
 from django.test import TestCase, SimpleTestCase
 
 from apps.datasets.models import Dataset
-from apps.organizations.models import Organization
+from apps.organizations.models import (
+    Organization,
+    OrganizationMember,
+)
 from apps.workflows.models import (
     Workflow,
     WorkflowStep,
@@ -564,6 +567,12 @@ class PredictionPipelineTests(TestCase):
             organization=self.organization,
             name="Order Fulfillment",
             created_by=self.user,
+        )
+
+        OrganizationMember.objects.create(
+            organization=self.organization,
+            user=self.user,
+            role=OrganizationMember.Role.ANALYST,
         )
 
         WorkflowStep.objects.create(

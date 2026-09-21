@@ -50,6 +50,8 @@ INSTALLED_APPS = [
     "apps.recommendations",
     "apps.simulations",
     "apps.reports",
+    "apps.notifications",
+    "apps.audit",
 ]
 
 

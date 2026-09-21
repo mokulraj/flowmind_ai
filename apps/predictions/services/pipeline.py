@@ -1,3 +1,5 @@
+from apps.audit.models import AuditLog
+from apps.audit.services.audit_service import AuditLogService
 from apps.preprocessing.services.dataset_preprocessing import (
     DatasetPreprocessingService,
 )
@@ -59,12 +61,54 @@ class PredictionPipeline:
             ]
         )
 
-        return {
+        result = {
             "preprocessing": preprocessing_result,
             "training": training_result,
             "predictions": predictions,
             "explainability": explainability,
         }
+
+        if self.dataset.organization_id:
+            AuditLogService.create(
+                organization=self.dataset.organization,
+                user=self.dataset.uploaded_by,
+                action=AuditLog.Action.RUN,
+                object_type="Prediction",
+                object_id=self.dataset.id,
+                object_repr=str(self.dataset),
+                description=(
+                    f"Prediction pipeline completed for "
+                    f"dataset '{self.dataset.name}'."
+                ),
+                metadata={
+                    "dataset_id": self.dataset.id,
+                    "dataset_name": self.dataset.name,
+                    "workflow_id": self.dataset.workflow_id,
+                    "training_rows": training_result.get(
+                        "training_rows",
+                        len(feature_dataframe),
+                    ),
+                    "prediction_rows": len(predictions),
+                    "feature_count": len(
+                        model.feature_columns
+                    ),
+                    "feature_columns": list(
+                        model.feature_columns
+                    ),
+                    "preprocessing_original_rows": (
+                        preprocessing_result[
+                            "original_rows"
+                        ]
+                    ),
+                    "preprocessing_cleaned_rows": (
+                        preprocessing_result[
+                            "cleaned_rows"
+                        ]
+                    ),
+                },
+            )
+
+        return result
 
     def _prepare_features(self, dataframe):
         required_columns = [

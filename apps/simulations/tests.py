@@ -1,6 +1,7 @@
 from django.test import TestCase
 
 from apps.accounts.models import User
+from apps.audit.models import AuditLog
 from apps.organizations.models import Organization, OrganizationMember
 from apps.recommendations.models import Recommendation
 from apps.simulations.models import Simulation
@@ -1019,4 +1020,75 @@ class SimulationPipelineTests(SimulationTestMixin, TestCase):
         self.assertEqual(
             result["results"]["projected_event_count"],
             6000,
+        )
+
+    def test_pipeline_creates_audit_log(self):
+        simulation = self.create_simulation(
+            name="Audited Simulation",
+            workload_change_percent=20.0,
+        )
+
+        result = self.pipeline.run(
+            simulation,
+            baseline_event_count=5000,
+            baseline_avg_duration=12.1,
+            baseline_total_duration=10000.0,
+            generate_recommendation=False,
+        )
+
+        self.assertEqual(
+            result["simulation"].status,
+            Simulation.Status.COMPLETED,
+        )
+
+        audit_log = AuditLog.objects.get(
+            organization=self.organization,
+            action=AuditLog.Action.RUN,
+            object_type="Simulation",
+            object_id=simulation.id,
+        )
+
+        self.assertIsNone(audit_log.user)
+
+        self.assertEqual(
+            audit_log.metadata["simulation_id"],
+            simulation.id,
+        )
+
+        self.assertEqual(
+            audit_log.metadata["simulation_name"],
+            "Audited Simulation",
+        )
+
+        self.assertEqual(
+            audit_log.metadata["workflow_id"],
+            self.workflow.id,
+        )
+
+        self.assertEqual(
+            audit_log.metadata["status"],
+            Simulation.Status.COMPLETED,
+        )
+
+        self.assertEqual(
+            audit_log.metadata["baseline_event_count"],
+            5000,
+        )
+
+        self.assertEqual(
+            audit_log.metadata["projected_event_count"],
+            6000,
+        )
+
+        self.assertEqual(
+            audit_log.metadata["bottleneck_count"],
+            0,
+        )
+
+        self.assertFalse(
+            audit_log.metadata["recommendation_generated"],
+        )
+
+        self.assertFalse(
+            audit_log.metadata["generate_recommendation"],
         )

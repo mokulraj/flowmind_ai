@@ -1,6 +1,9 @@
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
+from apps.audit.models import AuditLog
+from apps.audit.services.audit_service import AuditLogService
+
 from .validator import DatasetValidationError, DatasetValidator
 
 
@@ -46,6 +49,26 @@ class DatasetService:
                 ]
             )
 
+            AuditLogService.create(
+                organization=dataset.organization,
+                user=dataset.uploaded_by,
+                action=AuditLog.Action.RUN,
+                object_type="Dataset",
+                object_id=dataset.id,
+                object_repr=str(dataset),
+                description=(
+                    f"Dataset validation failed for "
+                    f"'{dataset.name}'."
+                ),
+                metadata={
+                    "dataset_id": dataset.id,
+                    "dataset_name": dataset.name,
+                    "workflow_id": dataset.workflow_id,
+                    "status": dataset.status,
+                    "validation_message": dataset.validation_message,
+                },
+            )
+
             raise ValidationError(str(exc)) from exc
 
         dataset.row_count = result["row_count"]
@@ -75,6 +98,31 @@ class DatasetService:
                 "validated_at",
                 "updated_at",
             ]
+        )
+
+        AuditLogService.create(
+            organization=dataset.organization,
+            user=dataset.uploaded_by,
+            action=AuditLog.Action.RUN,
+            object_type="Dataset",
+            object_id=dataset.id,
+            object_repr=str(dataset),
+            description=(
+                f"Validated dataset '{dataset.name}' successfully."
+            ),
+            metadata={
+                "dataset_id": dataset.id,
+                "dataset_name": dataset.name,
+                "workflow_id": dataset.workflow_id,
+                "row_count": result["row_count"],
+                "column_count": result["column_count"],
+                "missing_cells": result["missing_cells"],
+                "missing_percentage": result["missing_percentage"],
+                "duplicate_rows": result["duplicate_rows"],
+                "duplicate_percentage": result["duplicate_percentage"],
+                "quality_score": result["quality_score"],
+                "status": dataset.status,
+            },
         )
 
         return dataset
